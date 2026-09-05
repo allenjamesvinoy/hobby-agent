@@ -18,6 +18,15 @@ class TestContextLoader(unittest.TestCase):
         # Must NOT include sample_notes implementation details to avoid context bloat
         self.assertNotIn("NoteService", context)
 
+    def test_context_loader_web_app(self):
+        loader = ContextLoader(root_dir)
+        context = loader.assemble_targeted_context("[React App] Research Paper Companion", "Local React tool with flashcards")
+        
+        self.assertIn("ARCHITECTURE.md", context)
+        # Web app should not load Python base interfaces
+        self.assertNotIn("FeaturePlugin", context)
+        self.assertNotIn("NoteService", context)
+
     def test_context_loader_existing_feature_match(self):
         loader = ContextLoader(root_dir)
         context = loader.assemble_targeted_context("Update sample notes", "Add markdown export to notes")
