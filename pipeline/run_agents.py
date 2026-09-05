@@ -110,13 +110,14 @@ Description: {idea_body}
 Task:
 1. Build a modern, self-contained React web application under `apps/{slug}/`.
 2. Provide all essential files:
-   - `apps/{slug}/package.json` (with scripts like "dev", "build" and React dependencies)
-   - `apps/{slug}/index.html`
-   - `apps/{slug}/src/main.jsx`
-   - `apps/{slug}/src/App.jsx`
+   - `apps/{slug}/package.json` (with "dev", "build", "dist" scripts)
+   - `apps/{slug}/index.html` (referencing /src/main.jsx)
+   - `apps/{slug}/src/main.jsx` (MUST be included: mounts App to document.getElementById('root'))
+   - `apps/{slug}/src/App.jsx` (MUST be included: root orchestrator component)
    - `apps/{slug}/src/components/...` (modular components for each major feature)
    - `apps/{slug}/src/index.css` (clean, modern styling)
-   - `apps/{slug}/README.md` (explaining how to run: npm install && npm run dev)
+   - `apps/{slug}/electron/main.js` (if desktop/electron app requested)
+   - `apps/{slug}/README.md` (explaining how to run)
 3. For local storage / persistence: use browser `localStorage` or `IndexedDB`. Do NOT add any cloud backend or external database.
 4. Keep each file modular and maintainable (aim for under 200 lines per file).
 
