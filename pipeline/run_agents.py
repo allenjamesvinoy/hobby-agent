@@ -21,7 +21,7 @@ def get_gemini_client():
     from google import genai
     return genai.Client(api_key=api_key)
 
-MODEL_NAME = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+MODEL_NAME = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
 
 def check_python_syntax(files: Dict[str, str]) -> Dict[str, str]:
     """Verifies that all generated .py files have valid Python AST syntax."""
