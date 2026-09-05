@@ -234,6 +234,8 @@ export default function App() {
         onPageChange={handlePdfPageChange}
         paper={papers.find((p) => p.id === pdfViewing.paperId)}
         onUpdatePaper={(updates) => pdfViewing.paperId && handleUpdatePaper(pdfViewing.paperId, updates)}
+        onAddFlashcard={handleAddFlashcard}
+        flashcards={flashcards}
         onClose={() =>
           setPdfViewing({
             isOpen: false,

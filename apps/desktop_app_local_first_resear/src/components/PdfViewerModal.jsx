@@ -11,7 +11,10 @@ import {
   Loader2,
   ZoomIn,
   ZoomOut,
-  Maximize2
+  Maximize2,
+  Brain,
+  Plus,
+  Check
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import Tesseract from 'tesseract.js';
@@ -54,6 +57,8 @@ export default function PdfViewerModal({
   onClose,
   paper,
   onUpdatePaper,
+  onAddFlashcard,
+  flashcards = [],
   settings = { dwellThresholdMinutes: 3, autoMarkDwell: true },
   onOpenSettings
 }) {
@@ -63,11 +68,19 @@ export default function PdfViewerModal({
   const [currentPage, setCurrentPage] = useState(initialPage || 1);
   const [sections, setSections] = useState([]);
   const [showSectionsSidebar, setShowSectionsSidebar] = useState(true);
+  const [sidebarTab, setSidebarTab] = useState('sections'); // 'sections' | 'flashcards'
   const [isScanningSections, setIsScanningSections] = useState(false);
   const [scanMethod, setScanMethod] = useState('');
   const [renderedPages, setRenderedPages] = useState({});
   const [scale, setScale] = useState(1.25);
   const [pageDimensions, setPageDimensions] = useState({});
+
+  // Flashcard Creation States
+  const [isCardModalOpen, setIsCardModalOpen] = useState(false);
+  const [cardFront, setCardFront] = useState('');
+  const [cardBack, setCardBack] = useState('');
+  const [cardSourcePage, setCardSourcePage] = useState(initialPage || 1);
+  const [cardSavedFeedback, setCardSavedFeedback] = useState(false);
   
   const scrollContainerRef = useRef(null);
   const canvasRefs = useRef({});
@@ -77,12 +90,71 @@ export default function PdfViewerModal({
   const renderingRef = useRef({});
   const currentPageRef = useRef(currentPage);
 
+  const paperFlashcards = paper?.id
+    ? flashcards.filter((f) => f.paperId === paper.id)
+    : [];
+
+  const activeSection = sections.find(
+    (s) => currentPage >= (s.startPage || 1) && currentPage <= (s.endPage || numPages)
+  );
+
   const handleZoom = (newScale) => {
     const clamped = Math.max(0.6, Math.min(2.5, Number(newScale.toFixed(2))));
     setScale(clamped);
     setRenderedPages({});
     renderingRef.current = {};
   };
+
+  const handleOpenCardModal = () => {
+    const selectedText = window.getSelection()?.toString()?.trim() || '';
+    if (selectedText) {
+      if (selectedText.length <= 120 && !cardFront) {
+        setCardFront(selectedText);
+      } else if (!cardBack) {
+        setCardBack(selectedText);
+      }
+    }
+    setCardSourcePage(currentPage);
+    setIsCardModalOpen(true);
+  };
+
+  const handleSaveFlashcard = (keepOpen = false) => {
+    if (!cardFront.trim() || !cardBack.trim()) return;
+
+    if (onAddFlashcard) {
+      onAddFlashcard({
+        paperId: paper?.id,
+        front: cardFront.trim(),
+        back: cardBack.trim(),
+        sourcePage: cardSourcePage || currentPage,
+        sourceSection: activeSection?.name || '',
+        mastery: 'New',
+        masteryLevel: 'unreviewed'
+      });
+    }
+
+    setCardFront('');
+    setCardBack('');
+    setCardSavedFeedback(true);
+    setTimeout(() => setCardSavedFeedback(false), 2500);
+
+    if (!keepOpen) {
+      setIsCardModalOpen(false);
+    }
+  };
+
+  // Keyboard shortcut for Cmd+K / Ctrl+K
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        handleOpenCardModal();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, currentPage, activeSection]);
 
   useEffect(() => {
     currentPageRef.current = currentPage;
@@ -429,16 +501,40 @@ export default function PdfViewerModal({
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex flex-col p-4 select-none">
       {/* Top Navigation & Status Bar */}
       <div className="flex items-center justify-between mb-3 text-slate-100 bg-slate-900 px-4 py-2.5 rounded-xl border border-slate-800 shadow-xl shrink-0">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <button
             onClick={() => setShowSectionsSidebar(!showSectionsSidebar)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${' '}{
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
               showSectionsSidebar ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40' : 'bg-slate-800 text-slate-400 hover:text-slate-200'
             }`}
+            title="Toggle Outline / Flashcards Sidebar"
           >
-            <List className="w-4 h-4" /> Sections
+            <List className="w-4 h-4" />
+            <span className="hidden sm:inline">Sidebar</span>
           </button>
-          <h3 className="font-bold text-xs truncate max-w-xs md:max-w-md text-slate-200">
+
+          {/* Quick Create Flashcard Button */}
+          <button
+            onClick={handleOpenCardModal}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md transition-all hover:scale-105 active:scale-95"
+            title="Create Flashcard from current reading spot (⌘+K / Ctrl+K)"
+          >
+            <Brain className="w-3.5 h-3.5" />
+            <span>+ Flashcard</span>
+            {paperFlashcards.length > 0 && (
+              <span className="ml-0.5 px-1.5 py-0.2 bg-indigo-900/90 text-indigo-200 rounded-full text-[10px] font-mono">
+                {paperFlashcards.length}
+              </span>
+            )}
+          </button>
+
+          {cardSavedFeedback && (
+            <span className="flex items-center gap-1 text-[11px] text-emerald-400 font-mono animate-in fade-in">
+              <Check className="w-3.5 h-3.5" /> Saved!
+            </span>
+          )}
+
+          <h3 className="font-bold text-xs truncate max-w-xs md:max-w-sm text-slate-200 hidden md:block" title={title || 'PDF Document'}>
             {title || 'PDF Document'}
           </h3>
         </div>
@@ -533,77 +629,160 @@ export default function PdfViewerModal({
 
       {/* Main Viewport Workspace */}
       <div className="flex-1 flex overflow-hidden gap-4">
-        {/* Collapsible Sections Sidebar */}
+        {/* Collapsible Sections & Flashcards Sidebar */}
         {showSectionsSidebar && (
-          <div className="w-72 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between shrink-0 overflow-y-auto space-y-4 shadow-xl">
+          <div className="w-72 bg-slate-900 border border-slate-800 rounded-xl p-3 flex flex-col justify-between shrink-0 overflow-y-auto space-y-3 shadow-xl">
             <div className="space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                <span className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" /> Detected Sections
-                </span>
+              {/* Sidebar Tabs */}
+              <div className="grid grid-cols-2 p-1 bg-slate-950/80 rounded-lg border border-slate-800 text-xs font-semibold">
                 <button
-                  onClick={runSectionScanner}
-                  disabled={isScanningSections}
-                  className="text-[10px] text-indigo-400 hover:text-indigo-300 font-mono underline disabled:opacity-50"
+                  onClick={() => setSidebarTab('sections')}
+                  className={`py-1.5 rounded-md text-center transition-all flex items-center justify-center gap-1.5 ${
+                    sidebarTab === 'sections'
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
                 >
-                  Re-Scan
+                  <Sparkles className="w-3.5 h-3.5" /> Outline
+                </button>
+                <button
+                  onClick={() => setSidebarTab('flashcards')}
+                  className={`py-1.5 rounded-md text-center transition-all flex items-center justify-center gap-1.5 ${
+                    sidebarTab === 'flashcards'
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Brain className="w-3.5 h-3.5" /> Cards ({paperFlashcards.length})
                 </button>
               </div>
 
-              {isScanningSections ? (
-                <div className="py-8 text-center space-y-2 text-slate-400 text-xs">
-                  <Loader2 className="w-6 h-6 text-indigo-400 animate-spin mx-auto" />
-                  <p className="font-mono text-[11px]">{scanMethod}</p>
-                </div>
-              ) : sections.length === 0 ? (
-                <div className="py-8 text-center text-slate-500 text-xs space-y-2 font-mono">
-                  <p>No outline sections detected.</p>
-                  <button
-                    onClick={runSectionScanner}
-                    className="px-3 py-1 bg-indigo-600/30 text-indigo-300 rounded border border-indigo-500/30 text-xs"
-                  >
-                    Run Section Intelligence
-                  </button>
+              {sidebarTab === 'sections' ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-400" /> Detected Sections
+                    </span>
+                    <button
+                      onClick={runSectionScanner}
+                      disabled={isScanningSections}
+                      className="text-[10px] text-indigo-400 hover:text-indigo-300 font-mono underline disabled:opacity-50"
+                    >
+                      Re-Scan
+                    </button>
+                  </div>
+
+                  {isScanningSections ? (
+                    <div className="py-8 text-center space-y-2 text-slate-400 text-xs">
+                      <Loader2 className="w-6 h-6 text-indigo-400 animate-spin mx-auto" />
+                      <p className="font-mono text-[11px]">{scanMethod}</p>
+                    </div>
+                  ) : sections.length === 0 ? (
+                    <div className="py-8 text-center text-slate-500 text-xs space-y-2 font-mono">
+                      <p>No outline sections detected.</p>
+                      <button
+                        onClick={runSectionScanner}
+                        className="px-3 py-1 bg-indigo-600/30 text-indigo-300 rounded border border-indigo-500/30 text-xs"
+                      >
+                        Run Section Intelligence
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5 max-h-[calc(100vh-280px)] overflow-y-auto pr-1 custom-scrollbar">
+                      {sections.map((sec) => {
+                        const isActive = currentPage >= (sec.startPage || 1) && currentPage <= (sec.endPage || numPages);
+                        return (
+                          <div
+                            key={sec.id}
+                            onClick={() => scrollToPage(sec.startPage || 1)}
+                            className={`p-2.5 rounded-lg text-xs cursor-pointer transition-all border flex items-center justify-between ${
+                              isActive
+                                ? 'bg-indigo-600/20 border-indigo-500/50 text-indigo-200 font-medium'
+                                : 'bg-slate-800/40 border-slate-700/40 hover:bg-slate-800 text-slate-300'
+                            }`}
+                          >
+                            <div className="min-w-0 pr-2 space-y-0.5">
+                              <p className="truncate font-medium">{sec.name}</p>
+                              <p className="text-[10px] text-slate-500 font-mono">
+                                Page {sec.startPage} {sec.endPage ? `- ${sec.endPage}` : ''}
+                              </p>
+                            </div>
+                            {sec.completed ? (
+                              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                            ) : (
+                              <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               ) : (
-                <div className="space-y-1.5">
-                  {sections.map((sec) => {
-                    const isActive = currentPage >= (sec.startPage || 1) && currentPage <= (sec.endPage || numPages);
-                    return (
-                      <div
-                        key={sec.id}
-                        onClick={() => scrollToPage(sec.startPage || 1)}
-                        className={`p-2.5 rounded-lg text-xs cursor-pointer transition-all border flex items-center justify-between ${' '}{
-                          isActive
-                            ? 'bg-indigo-600/20 border-indigo-500/50 text-indigo-200 font-medium'
-                            : 'bg-slate-800/40 border-slate-700/40 hover:bg-slate-800 text-slate-300'
-                        }`}
+                /* Flashcards Tab Content */
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                      <Brain className="w-3.5 h-3.5 text-indigo-400" /> Active Recall
+                    </span>
+                    <button
+                      onClick={handleOpenCardModal}
+                      className="text-[11px] font-semibold text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add
+                    </button>
+                  </div>
+
+                  {paperFlashcards.length === 0 ? (
+                    <div className="py-8 text-center text-slate-500 text-xs space-y-3">
+                      <Brain className="w-8 h-8 mx-auto text-slate-600/70" />
+                      <p className="text-[11px]">No flashcards created yet for this paper.</p>
+                      <button
+                        onClick={handleOpenCardModal}
+                        className="px-3 py-1.5 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 rounded-lg text-xs font-medium border border-indigo-500/30 transition-colors"
                       >
-                        <div className="min-w-0 pr-2 space-y-0.5">
-                          <p className="truncate font-medium">{sec.name}</p>
-                          <p className="text-[10px] text-slate-500 font-mono">
-                            Page {sec.startPage} {sec.endPage ? `- ${sec.endPage}` : ''}
+                        + Create First Card (Page {currentPage})
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-[calc(100vh-280px)] overflow-y-auto pr-1 custom-scrollbar">
+                      {paperFlashcards.map((card) => (
+                        <div
+                          key={card.id}
+                          className="p-2.5 rounded-lg bg-slate-800/60 border border-slate-700/60 hover:border-slate-600 transition-all text-xs space-y-1.5 group"
+                        >
+                          <div className="flex items-start justify-between gap-1.5">
+                            <p className="font-semibold text-slate-200 leading-snug line-clamp-2">
+                              {card.front}
+                            </p>
+                            {card.sourcePage && (
+                              <button
+                                onClick={() => scrollToPage(card.sourcePage)}
+                                className="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800/60 text-[10px] font-mono hover:bg-indigo-900 shrink-0"
+                                title={`Jump directly to Page ${card.sourcePage} in PDF`}
+                              >
+                                p. {card.sourcePage}
+                              </button>
+                            )}
+                          </div>
+                          <p className="text-slate-400 text-[11px] line-clamp-2 bg-slate-950/60 p-1.5 rounded border border-slate-800/80 font-sans">
+                            {card.back}
                           </p>
                         </div>
-                        {sec.completed ? (
-                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                        ) : (
-                          <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                        )}
-                      </div>
-                    );
-                  })}
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
 
-            {/* Silent Dwell Info Footer */}
+            {/* Silent Dwell / Stats Info Footer */}
             <div className="pt-3 border-t border-slate-800/80 text-[10px] text-slate-500 font-mono space-y-1">
               <p className="flex items-center justify-between text-slate-400">
                 <span>Silent Auto-Mark:</span>
                 <span className="text-emerald-400">{settings.autoMarkDwell ? 'ACTIVE' : 'OFF'}</span>
               </p>
-              <p className="text-slate-500">Dwell Threshold: {settings.dwellThresholdMinutes} min/section</p>
+              <p className="text-slate-500">Dwell: {settings.dwellThresholdMinutes}m/section • {paperFlashcards.length} Cards</p>
             </div>
           </div>
         )}
@@ -642,6 +821,131 @@ export default function PdfViewerModal({
           ))}
         </div>
       </div>
+
+      {/* Quick-Create Flashcard Modal */}
+      {isCardModalOpen && (
+        <div className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 select-text">
+          <div
+            className="w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl p-5 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150"
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                e.preventDefault();
+                handleSaveFlashcard(false);
+              }
+            }}
+          >
+            {/* Modal Header */}
+            <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h4 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                  <Brain className="w-4 h-4 text-indigo-400" /> Create Flashcard
+                </h4>
+                <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-400 font-mono">
+                  <span className="truncate max-w-[180px] text-slate-300">{title}</span>
+                  <span>•</span>
+                  <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-indigo-300">
+                    Page {cardSourcePage}
+                  </span>
+                  {activeSection && (
+                    <span className="truncate max-w-[140px] text-slate-400">
+                      ({activeSection.name})
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={() => setIsCardModalOpen(false)}
+                className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-slate-200 transition-colors"
+                title="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Card Form */}
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">
+                  Front (Question / Concept / Term)
+                </label>
+                <textarea
+                  autoFocus
+                  rows={3}
+                  value={cardFront}
+                  onChange={(e) => setCardFront(e.target.value)}
+                  placeholder="e.g. What does Scaled Dot-Product Attention compute?"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none font-sans"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">
+                  Back (Answer / Explanation / Key Takeaway)
+                </label>
+                <textarea
+                  rows={4}
+                  value={cardBack}
+                  onChange={(e) => setCardBack(e.target.value)}
+                  placeholder="e.g. It computes the dot products of queries with all keys, divides each by sqrt(d_k), applies softmax, and multiplies by values..."
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none font-sans"
+                />
+              </div>
+
+              {/* Source Page Selector */}
+              <div className="flex items-center justify-between pt-1 text-xs">
+                <span className="text-slate-400 font-mono text-[11px]">
+                  Referenced Page in PDF:
+                </span>
+                <div className="flex items-center gap-1 font-mono">
+                  <span className="text-slate-400">Page</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max={numPages}
+                    value={cardSourcePage}
+                    onChange={(e) => setCardSourcePage(Number(e.target.value) || currentPage)}
+                    className="w-14 text-center bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-indigo-300 font-bold focus:outline-none focus:border-indigo-500"
+                  />
+                  <span className="text-slate-500">of {numPages}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-between pt-3 border-t border-slate-800">
+              <span className="text-[10px] text-slate-500 font-mono hidden sm:inline">
+                Tip: Press ⌘+Enter to save
+              </span>
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  type="button"
+                  onClick={() => setIsCardModalOpen(false)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveFlashcard(true)}
+                  disabled={!cardFront.trim() || !cardBack.trim()}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 disabled:opacity-40 transition-colors"
+                  title="Save this card and keep dialog open to add another"
+                >
+                  Save & Add Another
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveFlashcard(false)}
+                  disabled={!cardFront.trim() || !cardBack.trim()}
+                  className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md disabled:opacity-40 transition-colors"
+                >
+                  Save Flashcard
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
