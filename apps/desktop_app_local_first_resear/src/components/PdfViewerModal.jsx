@@ -8,7 +8,10 @@ import {
   CheckCircle2,
   Clock,
   Settings,
-  Loader2
+  Loader2,
+  ZoomIn,
+  ZoomOut,
+  Maximize2
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import Tesseract from 'tesseract.js';
@@ -63,13 +66,23 @@ export default function PdfViewerModal({
   const [isScanningSections, setIsScanningSections] = useState(false);
   const [scanMethod, setScanMethod] = useState('');
   const [renderedPages, setRenderedPages] = useState({});
+  const [scale, setScale] = useState(1.25);
+  const [pageDimensions, setPageDimensions] = useState({});
   
   const scrollContainerRef = useRef(null);
   const canvasRefs = useRef({});
+  const renderTasksRef = useRef({});
   const pageObserverRef = useRef(null);
   const isInitialScrollDone = useRef(false);
   const renderingRef = useRef({});
   const currentPageRef = useRef(currentPage);
+
+  const handleZoom = (newScale) => {
+    const clamped = Math.max(0.6, Math.min(2.5, Number(newScale.toFixed(2))));
+    setScale(clamped);
+    setRenderedPages({});
+    renderingRef.current = {};
+  };
 
   useEffect(() => {
     currentPageRef.current = currentPage;
@@ -103,6 +116,12 @@ export default function PdfViewerModal({
       setPdfDoc(null);
       setRenderedPages({});
       renderingRef.current = {};
+      Object.values(renderTasksRef.current).forEach((task) => {
+        try {
+          task?.cancel();
+        } catch (e) {}
+      });
+      renderTasksRef.current = {};
       isInitialScrollDone.current = false;
     };
   }, [isOpen, rawUrl]);
@@ -147,7 +166,7 @@ export default function PdfViewerModal({
     };
   }, [isOpen, pdfDoc, numPages]);
 
-  // Render page canvas continuously
+  // Render page canvas continuously with HiDPI / Retina resolution
   useEffect(() => {
     if (!pdfDoc || !isOpen) return;
     let isCancelled = false;
@@ -156,18 +175,44 @@ export default function PdfViewerModal({
       if (renderingRef.current[pageNum] || renderedPages[pageNum]) return;
       renderingRef.current[pageNum] = true;
 
+      // Cancel any ongoing render task on this canvas
+      if (renderTasksRef.current[pageNum]) {
+        try {
+          renderTasksRef.current[pageNum].cancel();
+        } catch (e) {}
+      }
+
       try {
         const page = await pdfDoc.getPage(pageNum);
         if (isCancelled) return;
 
-        const viewport = page.getViewport({ scale: 1.3 });
+        const dpr = window.devicePixelRatio || 1;
+        const viewport = page.getViewport({ scale });
         const canvas = canvasRefs.current[pageNum];
         if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        canvas.height = viewport.height;
-        canvas.width = viewport.width;
 
-        await page.render({ canvasContext: ctx, viewport }).promise;
+        // Actual bitmap resolution scaled for HiDPI/Retina screens
+        canvas.width = Math.floor(viewport.width * dpr);
+        canvas.height = Math.floor(viewport.height * dpr);
+
+        // Display size in CSS pixels (ensures sharp, proportional 1:1 aspect ratio)
+        canvas.style.width = `${Math.floor(viewport.width)}px`;
+        canvas.style.height = `${Math.floor(viewport.height)}px`;
+
+        setPageDimensions((prev) => ({
+          ...prev,
+          [pageNum]: {
+            width: Math.floor(viewport.width),
+            height: Math.floor(viewport.height)
+          }
+        }));
+
+        const ctx = canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
+
+        const renderTask = page.render({ canvasContext: ctx, viewport });
+        renderTasksRef.current[pageNum] = renderTask;
+        await renderTask.promise;
         if (isCancelled) return;
 
         setRenderedPages((prev) => ({ ...prev, [pageNum]: true }));
@@ -177,7 +222,9 @@ export default function PdfViewerModal({
           pageObserverRef.current.observe(pageWrapper);
         }
       } catch (e) {
-        console.warn(`Error rendering canvas page ${pageNum}:`, e);
+        if (e?.name !== 'RenderingCancelledException') {
+          console.warn(`Error rendering canvas page ${pageNum}:`, e);
+        }
       } finally {
         renderingRef.current[pageNum] = false;
       }
@@ -189,8 +236,14 @@ export default function PdfViewerModal({
 
     return () => {
       isCancelled = true;
+      Object.values(renderTasksRef.current).forEach((task) => {
+        try {
+          task?.cancel();
+        } catch (e) {}
+      });
+      renderTasksRef.current = {};
     };
-  }, [pdfDoc, isOpen, numPages]);
+  }, [pdfDoc, isOpen, numPages, scale]);
 
   // Scroll to initial saved page on load
   useEffect(() => {
@@ -390,46 +443,88 @@ export default function PdfViewerModal({
           </h3>
         </div>
 
-        {/* Scroll Page Indicator & Controller */}
-        <div className="flex items-center gap-2 bg-slate-800/80 px-3 py-1 rounded-lg border border-slate-700/60 font-mono text-xs">
-          <button
-            onClick={() => scrollToPage(currentPage - 1)}
-            disabled={currentPage <= 1}
-            className="p-1 hover:bg-slate-700 rounded text-slate-300 disabled:opacity-30 transition-colors"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <span className="text-slate-400">Page</span>
-          <input
-            type="number"
-            min="1"
-            max={numPages}
-            value={currentPage}
-            onChange={(e) => scrollToPage(Number(e.target.value) || 1)}
-            className="w-12 text-center bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-xs text-indigo-300 font-bold focus:outline-none focus:border-indigo-500"
-          />
-          <span className="text-slate-400">of {numPages}</span>
-          <button
-            onClick={() => scrollToPage(currentPage + 1)}
-            disabled={currentPage >= numPages}
-            className="p-1 hover:bg-slate-700 rounded text-slate-300 disabled:opacity-30 transition-colors"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
+        {/* Center: Page Navigation & Zoom Controls */}
+        <div className="flex items-center gap-2">
+          {/* Scroll Page Indicator & Controller */}
+          <div className="flex items-center gap-2 bg-slate-800/80 px-3 py-1 rounded-lg border border-slate-700/60 font-mono text-xs">
+            <button
+              onClick={() => scrollToPage(currentPage - 1)}
+              disabled={currentPage <= 1}
+              className="p-1 hover:bg-slate-700 rounded text-slate-300 disabled:opacity-30 transition-colors"
+              title="Previous Page"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-slate-400">Page</span>
+            <input
+              type="number"
+              min="1"
+              max={numPages}
+              value={currentPage}
+              onChange={(e) => scrollToPage(Number(e.target.value) || 1)}
+              className="w-12 text-center bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-xs text-indigo-300 font-bold focus:outline-none focus:border-indigo-500"
+            />
+            <span className="text-slate-400">of {numPages}</span>
+            <button
+              onClick={() => scrollToPage(currentPage + 1)}
+              disabled={currentPage >= numPages}
+              className="p-1 hover:bg-slate-700 rounded text-slate-300 disabled:opacity-30 transition-colors"
+              title="Next Page"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Zoom Controls */}
+          <div className="flex items-center gap-1 bg-slate-800/80 px-2 py-1 rounded-lg border border-slate-700/60 font-mono text-xs">
+            <button
+              onClick={() => handleZoom(scale - 0.2)}
+              disabled={scale <= 0.6}
+              className="p-1 hover:bg-slate-700 rounded text-slate-300 disabled:opacity-30 transition-colors"
+              title="Zoom Out"
+            >
+              <ZoomOut className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => handleZoom(1.25)}
+              className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-200 text-xs font-semibold"
+              title="Reset Zoom (125%)"
+            >
+              {Math.round(scale * 100)}%
+            </button>
+            <button
+              onClick={() => handleZoom(scale + 0.2)}
+              disabled={scale >= 2.5}
+              className="p-1 hover:bg-slate-700 rounded text-slate-300 disabled:opacity-30 transition-colors"
+              title="Zoom In"
+            >
+              <ZoomIn className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => handleZoom(scale === 1.0 ? 1.4 : 1.0)}
+              className="p-1 hover:bg-slate-700 rounded text-slate-300 transition-colors ml-0.5"
+              title={scale === 1.0 ? "Enlarge View (140%)" : "Fit 100%"}
+            >
+              <Maximize2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={onOpenSettings}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors border border-slate-700/60"
-            title="Reading Dwell Settings"
-          >
-            <Settings className="w-3.5 h-3.5 text-indigo-400" />
-            <span className="hidden sm:inline">{settings.dwellThresholdMinutes}m Auto-Mark</span>
-          </button>
+          {onOpenSettings && (
+            <button
+              onClick={onOpenSettings}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors border border-slate-700/60"
+              title="Reading Dwell Settings"
+            >
+              <Settings className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="hidden sm:inline">{settings.dwellThresholdMinutes}m Auto-Mark</span>
+            </button>
+          )}
           <button
             onClick={onClose}
             className="p-1.5 text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded-lg transition-colors"
+            title="Close PDF"
           >
             <X className="w-5 h-5" />
           </button>
@@ -516,27 +611,32 @@ export default function PdfViewerModal({
         {/* Continuous Canvas Scroll Viewer */}
         <div
           ref={scrollContainerRef}
-          className="flex-1 bg-slate-950 rounded-xl border border-slate-800 overflow-y-auto p-6 space-y-6 flex flex-col items-center custom-scrollbar shadow-inner"
+          className="flex-1 bg-slate-950 rounded-xl border border-slate-800 overflow-auto p-6 space-y-6 custom-scrollbar shadow-inner"
         >
           {Array.from({ length: numPages }, (_, idx) => idx + 1).map((pNum) => (
             <div
               key={`page-container-${pNum}`}
               id={`pdf-page-${pNum}`}
               data-page-number={pNum}
-              className="relative bg-white rounded-lg shadow-2xl overflow-hidden transition-shadow border border-slate-700/50 min-h-[400px] flex items-center justify-center"
+              style={{
+                width: pageDimensions[pNum] ? `${pageDimensions[pNum].width}px` : undefined,
+                height: pageDimensions[pNum] ? `${pageDimensions[pNum].height}px` : undefined,
+                minHeight: pageDimensions[pNum] ? `${pageDimensions[pNum].height}px` : '700px'
+              }}
+              className="relative bg-white shadow-2xl mx-auto my-6 rounded-sm border border-slate-300 shrink-0 select-text overflow-hidden"
             >
               <canvas
                 ref={(el) => (canvasRefs.current[pNum] = el)}
-                className="block max-w-full h-auto"
+                className="block"
               />
               {!renderedPages[pNum] && (
-                <div className="absolute inset-0 bg-slate-900 flex items-center justify-center text-slate-500 text-xs font-mono space-x-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
+                <div className="absolute inset-0 bg-slate-100 flex items-center justify-center text-slate-500 text-xs font-mono space-x-2">
+                  <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
                   <span>Loading Page {pNum}...</span>
                 </div>
               )}
-              <div className="absolute bottom-2 right-2 bg-slate-900/80 text-slate-300 font-mono text-[10px] px-2 py-0.5 rounded border border-slate-700 backdrop-blur-sm">
-                Page {pNum}
+              <div className="absolute bottom-3 right-3 bg-slate-900/80 text-white font-mono text-[10px] px-2 py-0.5 rounded shadow pointer-events-none backdrop-blur-sm">
+                Page {pNum} / {numPages}
               </div>
             </div>
           ))}

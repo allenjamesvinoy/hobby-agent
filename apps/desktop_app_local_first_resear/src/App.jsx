@@ -232,6 +232,8 @@ export default function App() {
         initialPage={pdfViewing.currentPage}
         totalPages={pdfViewing.totalPages}
         onPageChange={handlePdfPageChange}
+        paper={papers.find((p) => p.id === pdfViewing.paperId)}
+        onUpdatePaper={(updates) => pdfViewing.paperId && handleUpdatePaper(pdfViewing.paperId, updates)}
         onClose={() =>
           setPdfViewing({
             isOpen: false,
