@@ -105,9 +105,20 @@ export default function App() {
     );
   };
 
-  const handleOpenPdf = (paper) => {
-    if (paper.pdfFile) {
-      setPdfViewing({ isOpen: true, pdfData: paper.pdfFile, title: paper.title });
+  const handleOpenPdf = (paperOrUrl, paperTitle) => {
+    let pdfData = null;
+    let title = 'PDF Document';
+
+    if (typeof paperOrUrl === 'string') {
+      pdfData = paperOrUrl;
+      if (paperTitle) title = paperTitle;
+    } else if (paperOrUrl && typeof paperOrUrl === 'object') {
+      pdfData = paperOrUrl.pdfUrl || paperOrUrl.pdfFile;
+      if (paperOrUrl.title) title = paperOrUrl.title;
+    }
+
+    if (pdfData) {
+      setPdfViewing({ isOpen: true, pdfData, title });
     } else {
       alert('No PDF file attached to this paper entry.');
     }
@@ -143,7 +154,7 @@ export default function App() {
               onUpdatePaper={(updates) => handleUpdatePaper(selectedPaper.id, updates)}
               onAddFlashcard={(card) => handleAddFlashcard({ ...card, paperId: selectedPaper.id })}
               onDeleteFlashcard={handleDeleteFlashcard}
-              onOpenPdf={() => handleOpenPdf(selectedPaper)}
+              onOpenPdf={(target, title) => handleOpenPdf(target || selectedPaper, title)}
             />
           ) : (
             <PaperList
@@ -171,7 +182,7 @@ export default function App() {
 
       <PdfViewerModal
         isOpen={pdfViewing.isOpen}
-        pdfData={pdfViewing.pdfData}
+        pdfUrl={pdfViewing.pdfData}
         title={pdfViewing.title}
         onClose={() => setPdfViewing({ isOpen: false, pdfData: null, title: '' })}
       />

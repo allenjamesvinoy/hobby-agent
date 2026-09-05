@@ -73,9 +73,9 @@ export default function PaperDetail({
         </button>
 
         <div className="flex items-center gap-3">
-          {paper.pdfUrl && (
+          {(paper.pdfUrl || paper.pdfFile) && (
             <button
-              onClick={() => onOpenPdf(paper.pdfUrl, paper.title)}
+              onClick={() => onOpenPdf(paper)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600/20 text-indigo-300 hover:bg-indigo-600/30 text-xs font-medium border border-indigo-500/30 transition-colors"
             >
               <Eye className="w-3.5 h-3.5" /> Open PDF Reader
@@ -125,8 +125,8 @@ export default function PaperDetail({
                 <span>Page Tracker</span>
                 <span className="font-mono text-indigo-400">
                   {Math.min(100, Math.round(((currentPage || 0) / (paper.totalPages || 1)) * 100))}{
-                  ' '}
-                  %
+                  ' '
+                }%
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -138,7 +138,7 @@ export default function PaperDetail({
                   onChange={(e) => setCurrentPage(e.target.value)}
                   className="w-20 bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1 text-center text-sm font-mono text-slate-100 focus:outline-none focus:border-indigo-500"
                 />
-                <span className="text-xs text-slate-500">/ {paper.totalPages} total</span>
+                <span className="text-xs text-slate-500">/ {paper.totalPages || 1} total</span>
               </div>
             </div>
 
@@ -169,7 +169,7 @@ export default function PaperDetail({
           <div className="flex border-b border-slate-800 px-6 pt-3 bg-slate-950/20">
             <button
               onClick={() => setActiveSubTab('notes')}
-              className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors ${ 
+              className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors ${
                 activeSubTab === 'notes'
                   ? 'border-indigo-500 text-indigo-400'
                   : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -179,7 +179,7 @@ export default function PaperDetail({
             </button>
             <button
               onClick={() => setActiveSubTab('flashcards')}
-              className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors ${ 
+              className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors ${
                 activeSubTab === 'flashcards'
                   ? 'border-indigo-500 text-indigo-400'
                   : 'border-transparent text-slate-400 hover:text-slate-200'
