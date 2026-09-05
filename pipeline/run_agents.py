@@ -180,7 +180,8 @@ Description: {idea_body}
 Instructions:
 1. Carefully diagnose the request and identify which specific files need changes.
 2. Provide the complete updated code for ONLY the files that need to be modified or newly created.
-3. Do NOT re-emit untouched files. Keep changes focused, minimal, and high quality.
+3. If introducing any new third-party imports (e.g., pdfjs-dist, tesseract.js), you MUST also update `{rel_dir}/package.json` to include them under `dependencies`.
+4. Do NOT re-emit untouched files. Keep changes focused, minimal, and high quality.
 
 Output Format:
 Return a raw JSON object containing ONLY modified or new files:
