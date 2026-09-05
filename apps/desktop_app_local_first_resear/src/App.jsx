@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import PaperList from './components/PaperList';
-import PaperDetail from './components/PaperDetail';
+import PaperDetail, { DEFAULT_ACADEMIC_SECTIONS } from './components/PaperDetail';
 import FlashcardReview from './components/FlashcardReview';
 import PaperFormModal from './components/PaperFormModal';
 import PdfViewerModal from './components/PdfViewerModal';
@@ -9,11 +9,28 @@ import PdfViewerModal from './components/PdfViewerModal';
 const STORAGE_KEY_PAPERS = 'paper_companion_papers_v1';
 const STORAGE_KEY_FLASHCARDS = 'paper_companion_flashcards_v1';
 
+const createDefaultSections = () =>
+  DEFAULT_ACADEMIC_SECTIONS.map((name, idx) => ({
+    id: 'sec_' + idx + '_' + Math.random().toString(36).substring(2, 9),
+    name,
+    completed: false
+  }));
+
 export default function App() {
   const [papers, setPapers] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_PAPERS);
-      return saved ? JSON.parse(saved) : [];
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed)
+        ? parsed.map((paper) => ({
+            ...paper,
+            sections:
+              paper.sections && paper.sections.length > 0
+                ? paper.sections
+                : createDefaultSections()
+          }))
+        : [];
     } catch {
       return [];
     }
@@ -32,7 +49,14 @@ export default function App() {
   const [filterStatus, setFilterStatus] = useState('All');
   const [selectedPaperId, setSelectedPaperId] = useState(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [pdfViewing, setPdfViewing] = useState({ isOpen: false, pdfData: null, title: '' });
+  const [pdfViewing, setPdfViewing] = useState({
+    isOpen: false,
+    pdfData: null,
+    title: '',
+    paperId: null,
+    currentPage: 1,
+    totalPages: 1
+  });
 
   // Sync state to localStorage
   useEffect(() => {
@@ -57,8 +81,9 @@ export default function App() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       status: 'Not Started',
-      currentPage: 0,
+      currentPage: 1,
       notes: '',
+      sections: createDefaultSections(),
       ...paperData
     };
     setPapers((prev) => [newPaper, ...prev]);
@@ -105,12 +130,43 @@ export default function App() {
     );
   };
 
-  const handleOpenPdf = (paper) => {
-    if (paper.pdfFile) {
-      setPdfViewing({ isOpen: true, pdfData: paper.pdfFile, title: paper.title });
+  const handleOpenPdf = (paperOrUrl, paperTitle) => {
+    let pdfData = null;
+    let title = 'PDF Document';
+    let paperId = null;
+    let currentPage = 1;
+    let totalPages = 1;
+
+    if (typeof paperOrUrl === 'string') {
+      pdfData = paperOrUrl;
+      if (paperTitle) title = paperTitle;
+    } else if (paperOrUrl && typeof paperOrUrl === 'object') {
+      pdfData = paperOrUrl.pdfUrl || paperOrUrl.pdfFile;
+      if (paperOrUrl.title) title = paperOrUrl.title;
+      paperId = paperOrUrl.id;
+      currentPage = Number(paperOrUrl.currentPage) || 1;
+      totalPages = Number(paperOrUrl.totalPages) || 1;
+    }
+
+    if (pdfData) {
+      setPdfViewing({
+        isOpen: true,
+        pdfData,
+        title,
+        paperId,
+        currentPage,
+        totalPages
+      });
     } else {
       alert('No PDF file attached to this paper entry.');
     }
+  };
+
+  const handlePdfPageChange = (newPage) => {
+    if (pdfViewing.paperId) {
+      handleUpdatePaper(pdfViewing.paperId, { currentPage: newPage });
+    }
+    setPdfViewing((prev) => ({ ...prev, currentPage: newPage }));
   };
 
   const selectedPaper = papers.find((p) => p.id === selectedPaperId);
@@ -134,7 +190,7 @@ export default function App() {
       />
 
       <main className="flex-1 flex flex-col min-w-0 bg-slate-900 overflow-hidden">
-        {activeTab === 'library' ? (
+        {activeTab === 'library' || activeTab === 'papers' ? (
           selectedPaper ? (
             <PaperDetail
               paper={selectedPaper}
@@ -143,7 +199,7 @@ export default function App() {
               onUpdatePaper={(updates) => handleUpdatePaper(selectedPaper.id, updates)}
               onAddFlashcard={(card) => handleAddFlashcard({ ...card, paperId: selectedPaper.id })}
               onDeleteFlashcard={handleDeleteFlashcard}
-              onOpenPdf={() => handleOpenPdf(selectedPaper)}
+              onOpenPdf={(target, title) => handleOpenPdf(target || selectedPaper, title)}
             />
           ) : (
             <PaperList
@@ -171,9 +227,21 @@ export default function App() {
 
       <PdfViewerModal
         isOpen={pdfViewing.isOpen}
-        pdfData={pdfViewing.pdfData}
+        pdfUrl={pdfViewing.pdfData}
         title={pdfViewing.title}
-        onClose={() => setPdfViewing({ isOpen: false, pdfData: null, title: '' })}
+        initialPage={pdfViewing.currentPage}
+        totalPages={pdfViewing.totalPages}
+        onPageChange={handlePdfPageChange}
+        onClose={() =>
+          setPdfViewing({
+            isOpen: false,
+            pdfData: null,
+            title: '',
+            paperId: null,
+            currentPage: 1,
+            totalPages: 1
+          })
+        }
       />
     </div>
   );
