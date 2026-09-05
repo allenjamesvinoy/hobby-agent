@@ -60,6 +60,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           IDEA_TITLE: ${{ env.TITLE }}
           IDEA_BODY: ${{ env.BODY }}
+          PYTHONPATH: .
         run: |
           python pipeline/run_agents.py
 
