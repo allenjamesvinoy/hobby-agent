@@ -1,24 +1,44 @@
-import React, { useState, useEffect } from 'react';
-import { X, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  X,
+  ChevronLeft,
+  ChevronRight,
+  List,
+  Sparkles,
+  CheckCircle2,
+  Clock,
+  Settings,
+  Loader2
+} from 'lucide-react';
+import * as pdfjsLib from 'pdfjs-dist';
+import Tesseract from 'tesseract.js';
 
-function dataURLtoBlob(dataurl) {
-  try {
-    const arr = dataurl.split(',');
-    if (arr.length < 2) return null;
-    const mimeMatch = arr[0].match(/:(.*?);/);
-    const mime = mimeMatch ? mimeMatch[1] : 'application/pdf';
-    const bstr = atob(arr[1]);
-    let n = bstr.length;
-    const u8arr = new Uint8Array(n);
-    while (n--) {
-      u8arr[n] = bstr.charCodeAt(n);
+// Configure PDF.js Worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+
+function dataUrlToUint8Array(dataUrl) {
+  if (typeof dataUrl === 'string' && dataUrl.startsWith('data:')) {
+    const base64 = dataUrl.split(',')[1];
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
     }
-    return new Blob([u8arr], { type: mime });
-  } catch (e) {
-    console.error('Error converting data URL to blob:', e);
-    return null;
+    return bytes;
   }
+  return dataUrl;
 }
+
+const ACADEMIC_HEADER_PATTERNS = [
+  { name: 'Abstract', regex: /^\s*(?:abstract)/i },
+  { name: 'Introduction', regex: /^\s*(?:1[\.\s]+)?(?:introduction)/i },
+  { name: 'Background / Related Work', regex: /^\s*(?:2[\.\s]+)?(?:background|related\s+work)/i },
+  { name: 'Methodology / Architecture', regex: /^\s*(?:3[\.\s]+)?(?:methodology|method|methods|proposed\s+method|architecture)/i },
+  { name: 'Experiments / Results', regex: /^\s*(?:4[\.\s]+)?(?:experiments|results|evaluations|experimental\s+setup)/i },
+  { name: 'Discussion', regex: /^\s*(?:5[\.\s]+)?(?:discussion|analysis)/i },
+  { name: 'Conclusion', regex: /^\s*(?:6[\.\s]+)?(?:conclusion|conclusions)/i },
+  { name: 'References', regex: /^\s*(?:references|bibliography)/i }
+];
 
 export default function PdfViewerModal({
   isOpen,
@@ -28,164 +48,499 @@ export default function PdfViewerModal({
   initialPage = 1,
   totalPages = 1,
   onPageChange,
-  onClose
+  onClose,
+  paper,
+  onUpdatePaper,
+  settings = { dwellThresholdMinutes: 3, autoMarkDwell: true },
+  onOpenSettings
 }) {
   const rawUrl = pdfUrl || pdfData;
-  const [objectUrl, setObjectUrl] = useState(null);
+  const [pdfDoc, setPdfDoc] = useState(null);
+  const [numPages, setNumPages] = useState(totalPages || 1);
   const [currentPage, setCurrentPage] = useState(initialPage || 1);
+  const [sections, setSections] = useState([]);
+  const [showSectionsSidebar, setShowSectionsSidebar] = useState(true);
+  const [isScanningSections, setIsScanningSections] = useState(false);
+  const [scanMethod, setScanMethod] = useState('');
+  const [renderedPages, setRenderedPages] = useState({});
+  
+  const scrollContainerRef = useRef(null);
+  const canvasRefs = useRef({});
+  const pageObserverRef = useRef(null);
+  const isInitialScrollDone = useRef(false);
+  const renderingRef = useRef({});
+  const currentPageRef = useRef(currentPage);
 
   useEffect(() => {
-    if (isOpen) {
-      setCurrentPage(Number(initialPage) || 1);
-    }
-  }, [isOpen, initialPage]);
+    currentPageRef.current = currentPage;
+  }, [currentPage]);
 
+  // Load PDF Document via PDF.js
   useEffect(() => {
-    if (!isOpen || !rawUrl) {
-      setObjectUrl(null);
-      return;
-    }
+    if (!isOpen || !rawUrl) return;
 
-    let createdUrl = null;
-    if (typeof rawUrl === 'string' && rawUrl.startsWith('data:')) {
-      const blob = dataURLtoBlob(rawUrl);
-      if (blob) {
-        createdUrl = URL.createObjectURL(blob);
-        setObjectUrl(createdUrl);
-      } else {
-        setObjectUrl(rawUrl);
+    let isCancelled = false;
+    const loadDoc = async () => {
+      try {
+        const data = dataUrlToUint8Array(rawUrl);
+        const loadingTask = pdfjsLib.getDocument({ data });
+        const doc = await loadingTask.promise;
+        if (!isCancelled) {
+          setPdfDoc(doc);
+          setNumPages(doc.numPages);
+          if (paper && (!paper.totalPages || paper.totalPages !== doc.numPages)) {
+            onUpdatePaper && onUpdatePaper({ totalPages: doc.numPages });
+          }
+        }
+      } catch (err) {
+        console.error('Failed to parse PDF document:', err);
       }
-    } else {
-      setObjectUrl(rawUrl);
-    }
+    };
 
+    loadDoc();
     return () => {
-      if (createdUrl) {
-        URL.revokeObjectURL(createdUrl);
-      }
+      isCancelled = true;
+      setPdfDoc(null);
+      setRenderedPages({});
+      renderingRef.current = {};
+      isInitialScrollDone.current = false;
     };
   }, [isOpen, rawUrl]);
 
-  const maxPages = totalPages && Number(totalPages) > 1 ? Number(totalPages) : 9999;
-
+  // Dynamic IntersectionObserver for Scroll-based Page Detection
   useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (!isOpen) return;
-      if (e.key === 'Escape') {
-        onClose();
-      } else if (e.key === 'ArrowLeft') {
-        handleSetPage(currentPage - 1);
-      } else if (e.key === 'ArrowRight') {
-        handleSetPage(currentPage + 1);
+    if (!isOpen || !pdfDoc) return;
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        let maxRatio = 0;
+        let activePageNum = currentPageRef.current;
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && entry.intersectionRatio > maxRatio) {
+            maxRatio = entry.intersectionRatio;
+            const pNum = Number(entry.target.getAttribute('data-page-number'));
+            if (pNum) activePageNum = pNum;
+          }
+        });
+
+        if (activePageNum && activePageNum !== currentPageRef.current) {
+          setCurrentPage(activePageNum);
+          if (onPageChange) onPageChange(activePageNum);
+        }
+      },
+      {
+        root: container,
+        threshold: [0.2, 0.5, 0.8]
+      }
+    );
+
+    pageObserverRef.current = observer;
+
+    const pageEls = container.querySelectorAll('[data-page-number]');
+    pageEls.forEach((el) => observer.observe(el));
+
+    return () => {
+      observer.disconnect();
+      pageObserverRef.current = null;
+    };
+  }, [isOpen, pdfDoc, numPages]);
+
+  // Render page canvas continuously
+  useEffect(() => {
+    if (!pdfDoc || !isOpen) return;
+    let isCancelled = false;
+
+    const renderCanvasPage = async (pageNum) => {
+      if (renderingRef.current[pageNum] || renderedPages[pageNum]) return;
+      renderingRef.current[pageNum] = true;
+
+      try {
+        const page = await pdfDoc.getPage(pageNum);
+        if (isCancelled) return;
+
+        const viewport = page.getViewport({ scale: 1.3 });
+        const canvas = canvasRefs.current[pageNum];
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        if (isCancelled) return;
+
+        setRenderedPages((prev) => ({ ...prev, [pageNum]: true }));
+
+        const pageWrapper = canvas.parentElement;
+        if (pageWrapper && pageObserverRef.current) {
+          pageObserverRef.current.observe(pageWrapper);
+        }
+      } catch (e) {
+        console.warn(`Error rendering canvas page ${pageNum}:`, e);
+      } finally {
+        renderingRef.current[pageNum] = false;
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose, currentPage, maxPages]);
 
-  if (!isOpen || !rawUrl) return null;
+    for (let i = 1; i <= numPages; i++) {
+      renderCanvasPage(i);
+    }
 
-  const baseUrl = objectUrl || rawUrl;
-  // Append #page=N parameter to force browser/embedded PDF viewer to open at saved page
-  const displayUrl = baseUrl ? `${baseUrl.split('#')[0]}#page=${currentPage}` : '';
+    return () => {
+      isCancelled = true;
+    };
+  }, [pdfDoc, isOpen, numPages]);
 
-  const handleSetPage = (newPage) => {
-    const validPage = Math.max(1, Math.min(maxPages, newPage));
-    setCurrentPage(validPage);
-    if (onPageChange) {
-      onPageChange(validPage);
+  // Scroll to initial saved page on load
+  useEffect(() => {
+    if (isOpen && pdfDoc && !isInitialScrollDone.current) {
+      const targetPage = initialPage || (paper && paper.currentPage) || 1;
+      setTimeout(() => {
+        scrollToPage(targetPage);
+        isInitialScrollDone.current = true;
+      }, 300);
+    }
+  }, [isOpen, pdfDoc, initialPage]);
+
+  // 3-Tier Section Scanner Implementation
+  const runSectionScanner = async () => {
+    if (!pdfDoc) return;
+    setIsScanningSections(true);
+    setScanMethod('Scanning Outline...');
+
+    let detected = [];
+
+    try {
+      // Tier 1: Embedded PDF Outline
+      const outline = await pdfDoc.getOutline();
+      if (outline && outline.length > 0) {
+        setScanMethod('Tier 1: Embedded Bookmark Outline');
+        for (const item of outline) {
+          let pageNum = 1;
+          if (item.dest) {
+            let dest = item.dest;
+            if (typeof dest === 'string') {
+              dest = await pdfDoc.getDestination(dest);
+            }
+            if (Array.isArray(dest)) {
+              const pageRef = dest[0];
+              pageNum = (await pdfDoc.getPageIndex(pageRef)) + 1;
+            }
+          }
+          detected.push({
+            id: 'sec_out_' + Math.random().toString(36).substring(2, 9),
+            name: item.title,
+            startPage: pageNum,
+            completed: false,
+            timeSpentSec: 0
+          });
+        }
+      }
+
+      // Tier 2: Digital Text Parsing regex fallback
+      if (detected.length === 0) {
+        setScanMethod('Tier 2: Extracting Digital Text Headers');
+        let totalTextItems = 0;
+        for (let i = 1; i <= numPages; i++) {
+          const page = await pdfDoc.getPage(i);
+          const textContent = await page.getTextContent();
+          totalTextItems += textContent.items.length;
+          const pageText = textContent.items.map((it) => it.str).join(' ');
+
+          for (const pattern of ACADEMIC_HEADER_PATTERNS) {
+            if (pattern.regex.test(pageText) && !detected.some((d) => d.name === pattern.name)) {
+              detected.push({
+                id: 'sec_txt_' + Math.random().toString(36).substring(2, 9),
+                name: pattern.name,
+                startPage: i,
+                completed: false,
+                timeSpentSec: 0
+              });
+            }
+          }
+        }
+
+        // Tier 3: Local OCR via Tesseract.js if text content is 0 (scanned PDF)
+        if (detected.length === 0 && totalTextItems < 10) {
+          setScanMethod('Tier 3: Local WebAssembly OCR (Scanned Paper)');
+          for (let i = 1; i <= Math.min(numPages, 10); i++) {
+            const canvas = canvasRefs.current[i];
+            if (canvas) {
+              const { data } = await Tesseract.recognize(canvas, 'eng');
+              const scannedText = data.text || '';
+              for (const pattern of ACADEMIC_HEADER_PATTERNS) {
+                if (pattern.regex.test(scannedText) && !detected.some((d) => d.name === pattern.name)) {
+                  detected.push({
+                    id: 'sec_ocr_' + Math.random().toString(36).substring(2, 9),
+                    name: pattern.name,
+                    startPage: i,
+                    completed: false,
+                    timeSpentSec: 0
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Error running section scanner:', e);
+    } finally {
+      setIsScanningSections(false);
+      if (detected.length > 0) {
+        detected.sort((a, b) => a.startPage - b.startPage);
+        for (let idx = 0; idx < detected.length; idx++) {
+          const nextSec = detected[idx + 1];
+          detected[idx].endPage = nextSec ? Math.max(detected[idx].startPage, nextSec.startPage - 1) : numPages;
+        }
+        setSections(detected);
+        if (paper && onUpdatePaper) {
+          onUpdatePaper({ sections: detected });
+        }
+      }
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex flex-col p-6">
-      {/* Top Controller Toolbar */}
-      <div className="flex items-center justify-between mb-4 text-slate-100 bg-slate-900 px-4 py-3 rounded-xl border border-slate-800 shadow-lg">
-        <h3 className="font-semibold text-sm truncate max-w-xs md:max-w-md">
-          PDF Preview: {title || 'Document'}
-        </h3>
+  // Trigger section scanner on doc load if paper has no custom sections
+  useEffect(() => {
+    if (pdfDoc && paper) {
+      if (paper.sections && paper.sections.length > 0 && paper.sections[0].startPage) {
+        setSections(paper.sections);
+      } else {
+        runSectionScanner();
+      }
+    }
+  }, [pdfDoc, paper?.id]);
 
-        {/* Page Controller */}
+  // Silent Dwell-Time Auto-Marking Engine
+  useEffect(() => {
+    if (!isOpen || !sections.length) return;
+
+    const interval = setInterval(() => {
+      if (!document.hasFocus()) return;
+
+      const currentSectionIndex = sections.findIndex(
+        (s) => currentPage >= (s.startPage || 1) && currentPage <= (s.endPage || numPages)
+      );
+
+      if (currentSectionIndex !== -1) {
+        setSections((prevSections) => {
+          if (!prevSections || prevSections.length === 0) return prevSections;
+          const targetSec = prevSections[currentSectionIndex];
+          if (!targetSec) return prevSections;
+
+          const updatedSecs = [...prevSections];
+          const newTimeSpent = (targetSec.timeSpentSec || 0) + 1;
+          const thresholdSec = (settings.dwellThresholdMinutes || 3) * 60;
+          let newlyCompleted = targetSec.completed;
+
+          if (settings.autoMarkDwell && !targetSec.completed && newTimeSpent >= thresholdSec) {
+            newlyCompleted = true;
+          }
+
+          if (targetSec.timeSpentSec === newTimeSpent && targetSec.completed === newlyCompleted) {
+            return prevSections;
+          }
+
+          updatedSecs[currentSectionIndex] = {
+            ...targetSec,
+            timeSpentSec: newTimeSpent,
+            completed: newlyCompleted
+          };
+
+          if (newlyCompleted !== targetSec.completed || newTimeSpent % 5 === 0) {
+            onUpdatePaper && onUpdatePaper({ sections: updatedSecs });
+          }
+
+          return updatedSecs;
+        });
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isOpen, sections.length, currentPage, settings, numPages, onUpdatePaper]);
+
+  const scrollToPage = (pNum) => {
+    const valid = Math.max(1, Math.min(numPages, pNum));
+    setCurrentPage(valid);
+    const targetEl = document.getElementById(`pdf-page-${valid}`);
+    if (targetEl) {
+      targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  if (!isOpen || !rawUrl) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex flex-col p-4 select-none">
+      {/* Top Navigation & Status Bar */}
+      <div className="flex items-center justify-between mb-3 text-slate-100 bg-slate-900 px-4 py-2.5 rounded-xl border border-slate-800 shadow-xl shrink-0">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowSectionsSidebar(!showSectionsSidebar)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${' '}{
+              showSectionsSidebar ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40' : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <List className="w-4 h-4" /> Sections
+          </button>
+          <h3 className="font-bold text-xs truncate max-w-xs md:max-w-md text-slate-200">
+            {title || 'PDF Document'}
+          </h3>
+        </div>
+
+        {/* Scroll Page Indicator & Controller */}
         <div className="flex items-center gap-2 bg-slate-800/80 px-3 py-1 rounded-lg border border-slate-700/60 font-mono text-xs">
           <button
-            onClick={() => handleSetPage(currentPage - 1)}
+            onClick={() => scrollToPage(currentPage - 1)}
             disabled={currentPage <= 1}
-            className="p-1 hover:bg-slate-700 rounded text-slate-300 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
-            title="Previous Page (Left Arrow)"
+            className="p-1 hover:bg-slate-700 rounded text-slate-300 disabled:opacity-30 transition-colors"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
-
           <span className="text-slate-400">Page</span>
           <input
             type="number"
             min="1"
-            max={maxPages}
+            max={numPages}
             value={currentPage}
-            onChange={(e) => handleSetPage(Number(e.target.value) || 1)}
+            onChange={(e) => scrollToPage(Number(e.target.value) || 1)}
             className="w-12 text-center bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-xs text-indigo-300 font-bold focus:outline-none focus:border-indigo-500"
           />
-          <span className="text-slate-400">
-            of {totalPages && Number(totalPages) > 1 ? totalPages : '?'}
-          </span>
-
+          <span className="text-slate-400">of {numPages}</span>
           <button
-            onClick={() => handleSetPage(currentPage + 1)}
-            disabled={totalPages && Number(totalPages) > 1 ? currentPage >= totalPages : false}
-            className="p-1 hover:bg-slate-700 rounded text-slate-300 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
-            title="Next Page (Right Arrow)"
+            onClick={() => scrollToPage(currentPage + 1)}
+            disabled={currentPage >= numPages}
+            className="p-1 hover:bg-slate-700 rounded text-slate-300 disabled:opacity-30 transition-colors"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="flex items-center gap-3">
-          {displayUrl && (
-            <a
-              href={displayUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs text-indigo-400 hover:text-indigo-300 hover:underline flex items-center gap-1 font-medium transition-colors hidden sm:flex"
-            >
-              Open External <ExternalLink className="w-3.5 h-3.5" />
-            </a>
-          )}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onOpenSettings}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors border border-slate-700/60"
+            title="Reading Dwell Settings"
+          >
+            <Settings className="w-3.5 h-3.5 text-indigo-400" />
+            <span className="hidden sm:inline">{settings.dwellThresholdMinutes}m Auto-Mark</span>
+          </button>
           <button
             onClick={onClose}
-            className="p-1 text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded-lg transition-colors"
-            title="Close viewer (Esc)"
+            className="p-1.5 text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded-lg transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
       </div>
 
-      {/* PDF Viewer Frame */}
-      <div className="flex-1 bg-slate-950 rounded-xl border border-slate-800 overflow-hidden relative">
-        <object
-          key={`pdf-page-${currentPage}`}
-          data={displayUrl}
-          type="application/pdf"
-          className="w-full h-full border-0"
-        >
-          <iframe
-            src={displayUrl}
-            title={title || 'Research Paper PDF'}
-            className="w-full h-full border-0"
-          >
-            <div className="p-8 text-center text-slate-400">
-              <p className="mb-4">Unable to display PDF directly in browser.</p>
-              <a
-                href={displayUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg"
-              >
-                Download / Open PDF <ExternalLink className="w-4 h-4" />
-              </a>
+      {/* Main Viewport Workspace */}
+      <div className="flex-1 flex overflow-hidden gap-4">
+        {/* Collapsible Sections Sidebar */}
+        {showSectionsSidebar && (
+          <div className="w-72 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between shrink-0 overflow-y-auto space-y-4 shadow-xl">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <span className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" /> Detected Sections
+                </span>
+                <button
+                  onClick={runSectionScanner}
+                  disabled={isScanningSections}
+                  className="text-[10px] text-indigo-400 hover:text-indigo-300 font-mono underline disabled:opacity-50"
+                >
+                  Re-Scan
+                </button>
+              </div>
+
+              {isScanningSections ? (
+                <div className="py-8 text-center space-y-2 text-slate-400 text-xs">
+                  <Loader2 className="w-6 h-6 text-indigo-400 animate-spin mx-auto" />
+                  <p className="font-mono text-[11px]">{scanMethod}</p>
+                </div>
+              ) : sections.length === 0 ? (
+                <div className="py-8 text-center text-slate-500 text-xs space-y-2 font-mono">
+                  <p>No outline sections detected.</p>
+                  <button
+                    onClick={runSectionScanner}
+                    className="px-3 py-1 bg-indigo-600/30 text-indigo-300 rounded border border-indigo-500/30 text-xs"
+                  >
+                    Run Section Intelligence
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {sections.map((sec) => {
+                    const isActive = currentPage >= (sec.startPage || 1) && currentPage <= (sec.endPage || numPages);
+                    return (
+                      <div
+                        key={sec.id}
+                        onClick={() => scrollToPage(sec.startPage || 1)}
+                        className={`p-2.5 rounded-lg text-xs cursor-pointer transition-all border flex items-center justify-between ${' '}{
+                          isActive
+                            ? 'bg-indigo-600/20 border-indigo-500/50 text-indigo-200 font-medium'
+                            : 'bg-slate-800/40 border-slate-700/40 hover:bg-slate-800 text-slate-300'
+                        }`}
+                      >
+                        <div className="min-w-0 pr-2 space-y-0.5">
+                          <p className="truncate font-medium">{sec.name}</p>
+                          <p className="text-[10px] text-slate-500 font-mono">
+                            Page {sec.startPage} {sec.endPage ? `- ${sec.endPage}` : ''}
+                          </p>
+                        </div>
+                        {sec.completed ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                        ) : (
+                          <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          </iframe>
-        </object>
+
+            {/* Silent Dwell Info Footer */}
+            <div className="pt-3 border-t border-slate-800/80 text-[10px] text-slate-500 font-mono space-y-1">
+              <p className="flex items-center justify-between text-slate-400">
+                <span>Silent Auto-Mark:</span>
+                <span className="text-emerald-400">{settings.autoMarkDwell ? 'ACTIVE' : 'OFF'}</span>
+              </p>
+              <p className="text-slate-500">Dwell Threshold: {settings.dwellThresholdMinutes} min/section</p>
+            </div>
+          </div>
+        )}
+
+        {/* Continuous Canvas Scroll Viewer */}
+        <div
+          ref={scrollContainerRef}
+          className="flex-1 bg-slate-950 rounded-xl border border-slate-800 overflow-y-auto p-6 space-y-6 flex flex-col items-center custom-scrollbar shadow-inner"
+        >
+          {Array.from({ length: numPages }, (_, idx) => idx + 1).map((pNum) => (
+            <div
+              key={`page-container-${pNum}`}
+              id={`pdf-page-${pNum}`}
+              data-page-number={pNum}
+              className="relative bg-white rounded-lg shadow-2xl overflow-hidden transition-shadow border border-slate-700/50 min-h-[400px] flex items-center justify-center"
+            >
+              <canvas
+                ref={(el) => (canvasRefs.current[pNum] = el)}
+                className="block max-w-full h-auto"
+              />
+              {!renderedPages[pNum] && (
+                <div className="absolute inset-0 bg-slate-900 flex items-center justify-center text-slate-500 text-xs font-mono space-x-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
+                  <span>Loading Page {pNum}...</span>
+                </div>
+              )}
+              <div className="absolute bottom-2 right-2 bg-slate-900/80 text-slate-300 font-mono text-[10px] px-2 py-0.5 rounded border border-slate-700 backdrop-blur-sm">
+                Page {pNum}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

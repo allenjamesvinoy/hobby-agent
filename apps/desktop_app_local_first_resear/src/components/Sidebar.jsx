@@ -7,7 +7,8 @@ import {
   Plus,
   BookMarked,
   BarChart2,
-  HardDrive
+  HardDrive,
+  Settings
 } from 'lucide-react';
 
 export default function Sidebar({
@@ -17,12 +18,12 @@ export default function Sidebar({
   setFilterStatus,
   papers,
   flashcards,
-  onNewPaper
+  onNewPaper,
+  onOpenSettings
 }) {
   const totalPapers = papers.length;
   const completedCount = papers.filter((p) => p.status === 'Completed').length;
   const readingCount = papers.filter((p) => p.status === 'Reading').length;
-  const unstartedCount = papers.filter((p) => p.status === 'Not Started').length;
 
   return (
     <aside className="w-64 bg-slate-950/80 border-r border-slate-800 flex flex-col justify-between p-4 select-none pt-8">
@@ -58,7 +59,7 @@ export default function Sidebar({
               setActiveTab('papers');
               setFilterStatus('All');
             }}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors ${' '}{
               activeTab === 'papers' && filterStatus === 'All'
                 ? 'bg-slate-800 text-indigo-400'
                 : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
@@ -77,7 +78,7 @@ export default function Sidebar({
               setActiveTab('papers');
               setFilterStatus('Reading');
             }}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors ${' '}{
               activeTab === 'papers' && filterStatus === 'Reading'
                 ? 'bg-slate-800 text-indigo-400'
                 : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
@@ -96,7 +97,7 @@ export default function Sidebar({
               setActiveTab('papers');
               setFilterStatus('Completed');
             }}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors ${' '}{
               activeTab === 'papers' && filterStatus === 'Completed'
                 ? 'bg-slate-800 text-indigo-400'
                 : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
@@ -118,7 +119,7 @@ export default function Sidebar({
           </p>
           <button
             onClick={() => setActiveTab('flashcards')}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors ${' '}{
               activeTab === 'flashcards'
                 ? 'bg-slate-800 text-indigo-400'
                 : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
@@ -134,22 +135,33 @@ export default function Sidebar({
         </div>
       </div>
 
-      {/* Bottom Stats Widget */}
-      <div className="bg-slate-900/90 rounded-xl p-3 border border-slate-800/80 space-y-2">
-        <div className="flex items-center gap-2 text-xs font-semibold text-slate-400">
-          <BarChart2 className="w-3.5 h-3.5 text-indigo-400" /> Reading Progress
+      {/* Bottom Stats & Settings Widget */}
+      <div className="space-y-3">
+        <div className="bg-slate-900/90 rounded-xl p-3 border border-slate-800/80 space-y-2">
+          <div className="flex items-center justify-between text-xs font-semibold text-slate-400">
+            <span className="flex items-center gap-2">
+              <BarChart2 className="w-3.5 h-3.5 text-indigo-400" /> Reading Progress
+            </span>
+            <button
+              onClick={onOpenSettings}
+              className="p-1 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded transition-colors"
+              title="Reading Settings"
+            >
+              <Settings className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+            <div
+              className="bg-gradient-to-r from-indigo-500 to-purple-500 h-full rounded-full transition-all duration-300"
+              style={{
+                width: `${totalPapers > 0 ? (completedCount / totalPapers) * 100 : 0}%`
+              }}
+            />
+          </div>
+          <p className="text-[11px] text-slate-500 text-right font-mono">
+            {completedCount} / {totalPapers} finished ({totalPapers > 0 ? Math.round((completedCount / totalPapers) * 100) : 0}%)
+          </p>
         </div>
-        <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-          <div
-            className="bg-gradient-to-r from-indigo-500 to-purple-500 h-full rounded-full transition-all duration-300"
-            style={{
-              width: `${totalPapers > 0 ? (completedCount / totalPapers) * 100 : 0}%`
-            }}
-          />
-        </div>
-        <p className="text-[11px] text-slate-500 text-right font-mono">
-          {completedCount} / {totalPapers} finished ({totalPapers > 0 ? Math.round((completedCount / totalPapers) * 100) : 0}%)
-        </p>
       </div>
     </aside>
   );
