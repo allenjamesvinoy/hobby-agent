@@ -1,0 +1,86 @@
+name: Autonomous Multi-Agent Coder
+
+on:
+  issues:
+    types: [opened, labeled]
+  workflow_dispatch:
+    inputs:
+      idea_title:
+        description: 'Project / Feature Title'
+        required: true
+        default: 'CLI Pomodoro Timer'
+      idea_body:
+        description: 'Description and requirements'
+        required: true
+        default: 'A terminal-based 25-minute work and 5-minute break timer.'
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  build-and-review:
+    # Trigger if issue has the 'idea' label, or if manually dispatched
+    if: (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'idea')) || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r pipeline/requirements.txt
+
+      - name: Extract Issue or Dispatch Variables
+        id: vars
+        run: |
+          if [ "${{ github.event_name }}" = "issues" ]; then
+            echo "TITLE=${{ github.event.issue.title }}" >> $GITHUB_ENV
+            echo "BODY<<EOF" >> $GITHUB_ENV
+            echo "${{ github.event.issue.body }}" >> $GITHUB_ENV
+            echo "EOF" >> $GITHUB_ENV
+            echo "BRANCH_NAME=idea-issue-${{ github.event.issue.number }}" >> $GITHUB_ENV
+          else
+            echo "TITLE=${{ github.event.inputs.idea_title }}" >> $GITHUB_ENV
+            echo "BODY<<EOF" >> $GITHUB_ENV
+            echo "${{ github.event.inputs.idea_body }}" >> $GITHUB_ENV
+            echo "EOF" >> $GITHUB_ENV
+            echo "BRANCH_NAME=idea-manual-${{ github.run_id }}" >> $GITHUB_ENV
+          fi
+
+      - name: Run Multi-Agent System (Coder & Reviewer)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          IDEA_TITLE: ${{ env.TITLE }}
+          IDEA_BODY: ${{ env.BODY }}
+        run: |
+          python pipeline/run_agents.py
+
+      - name: Create Pull Request with Generated Feature
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "feat: autonomous implementation for '${{ env.TITLE }}'"
+          branch: ${{ env.BRANCH_NAME }}
+          title: "🤖 [Agent PR] ${{ env.TITLE }}"
+          body-path: pr_summary.md
+          labels: automated-pr, ready-for-review
+
+      - name: Comment on Issue
+        if: github.event_name == 'issues'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🚀 **Agents have completed your project!**\n\nThe code has been reviewed, formatted, and pushed to a new Pull Request for your review.`
+            })
