@@ -37,6 +37,45 @@ def slugify(text: str) -> str:
     clean = re.sub(r"[^\w\s-]", "", text).strip().lower()
     return re.sub(r"[-\s]+", "_", clean)[:30].strip("_")
 
+def safe_parse_json(raw_text: str) -> dict:
+    """Robust JSON parser that handles LLM output, unescaped control characters, and fences."""
+    clean = raw_text.strip()
+
+    # 1. Strip markdown code fences if wrapped
+    if clean.startswith("```"):
+        clean = re.sub(r"^```(?:json)?\s*", "", clean)
+        clean = re.sub(r"\s*```$", "", clean)
+
+    # 2. Try json.loads with strict=False (allows unescaped newlines/tabs in code strings)
+    try:
+        return json.loads(clean, strict=False)
+    except Exception:
+        pass
+
+    # 3. Extract substring between first '{' and last '}'
+    start = clean.find("{")
+    end = clean.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        sub = clean[start:end+1]
+        try:
+            return json.loads(sub, strict=False)
+        except Exception:
+            pass
+
+    # 4. Repair literal unescaped control characters in strings
+    try:
+        repaired = re.sub(
+            r'[\x00-\x1f\x7f-\x9f]', 
+            lambda m: '\\n' if m.group(0) == '\n' else ('\\t' if m.group(0) == '\t' else ''), 
+            clean
+        )
+        return json.loads(repaired, strict=False)
+    except Exception:
+        pass
+
+    # 5. Last attempt
+    return json.loads(clean, strict=False)
+
 def check_syntax(files: Dict[str, str]) -> Dict[str, str]:
     """Verifies syntax for Python AST and JSON files."""
     errors = {}
@@ -137,7 +176,7 @@ Do NOT wrap your JSON in markdown code blocks (no ```json). Output pure JSON onl
             temperature=0.2
         )
     )
-    data = json.loads(response.text)
+    data = safe_parse_json(response.text)
     return data.get("files", {})
 
 def run_reviewer_agent(
@@ -188,8 +227,12 @@ Return raw JSON only:
             temperature=0.1
         )
     )
-    data = json.loads(response.text)
-    return data.get("files", generated_files), data.get("review_summary", "Automated PR generated.")
+    try:
+        data = safe_parse_json(response.text)
+        return data.get("files", generated_files), data.get("review_summary", "Automated PR generated.")
+    except Exception as e:
+        print(f"⚠️ Reviewer JSON parsing failed ({e}). Retaining coder generated files directly.")
+        return generated_files, f"### 🤖 Autonomous Agent PR Summary\n\nAutomated implementation for **{idea_title}**."
 
 def main():
     root = Path(__file__).resolve().parent.parent
