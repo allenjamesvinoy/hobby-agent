@@ -6,7 +6,7 @@ import re
 import time
 import random
 from pathlib import Path
-from typing import Dict, Tuple, Any
+from typing import Dict, Tuple, Any, Optional
 
 # Ensure repository root is in sys.path
 root_dir = Path(__file__).resolve().parent.parent
