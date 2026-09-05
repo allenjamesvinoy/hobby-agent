@@ -6,8 +6,30 @@ import {
   Plus,
   Save,
   Trash2,
-  Eye
+  Eye,
+  ListChecks,
+  CheckSquare,
+  Square,
+  PlusCircle,
+  Check
 } from 'lucide-react';
+
+export const DEFAULT_ACADEMIC_SECTIONS = [
+  'Abstract',
+  'Introduction',
+  'Background / Related Work',
+  'Methodology / Architecture',
+  'Experiments / Results',
+  'Discussion',
+  'Conclusion'
+];
+
+const createDefaultSections = () =>
+  DEFAULT_ACADEMIC_SECTIONS.map((name, idx) => ({
+    id: 'sec_' + idx + '_' + Math.random().toString(36).substring(2, 9),
+    name,
+    completed: false
+  }));
 
 export default function PaperDetail({
   paper,
@@ -20,15 +42,34 @@ export default function PaperDetail({
 }) {
   const [activeSubTab, setActiveSubTab] = useState('notes');
   const [notes, setNotes] = useState(paper.notes || '');
-  const [currentPage, setCurrentPage] = useState(paper.currentPage || 0);
+  const [currentPage, setCurrentPage] = useState(paper.currentPage || 1);
   const [status, setStatus] = useState(paper.status || 'Not Started');
+  const [sections, setSections] = useState(() => {
+    return paper.sections && paper.sections.length > 0
+      ? paper.sections
+      : createDefaultSections();
+  });
+  const [newCustomSection, setNewCustomSection] = useState('');
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // Synchronize state whenever prop updates (e.g. switching selected paper)
+  // Synchronize state when selected paper ID changes
   useEffect(() => {
     setNotes(paper.notes || '');
-    setCurrentPage(paper.currentPage || 0);
+    setCurrentPage(paper.currentPage || 1);
     setStatus(paper.status || 'Not Started');
-  }, [paper]);
+    setSections(
+      paper.sections && paper.sections.length > 0
+        ? paper.sections
+        : createDefaultSections()
+    );
+  }, [paper.id]);
+
+  // Keep page tracker in sync when updated from PDF viewer
+  useEffect(() => {
+    if (paper.currentPage !== undefined && paper.currentPage !== currentPage) {
+      setCurrentPage(paper.currentPage);
+    }
+  }, [paper.currentPage]);
 
   // Flashcard Form State
   const [newFront, setNewFront] = useState('');
@@ -39,11 +80,43 @@ export default function PaperDetail({
 
   const handleSaveNotes = () => {
     onUpdatePaper({
-      ...paper,
       notes,
       currentPage: Number(currentPage),
-      status
+      status,
+      sections
     });
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 2000);
+  };
+
+  const handleToggleSection = (sectionId) => {
+    const updated = sections.map((sec) =>
+      sec.id === sectionId ? { ...sec, completed: !sec.completed } : sec
+    );
+    setSections(updated);
+    onUpdatePaper({ sections: updated });
+  };
+
+  const handleAddSection = (e) => {
+    if (e) e.preventDefault();
+    if (!newCustomSection.trim()) return;
+    const updated = [
+      ...sections,
+      {
+        id: 'sec_' + Date.now(),
+        name: newCustomSection.trim(),
+        completed: false
+      }
+    ];
+    setSections(updated);
+    onUpdatePaper({ sections: updated });
+    setNewCustomSection('');
+  };
+
+  const handleDeleteSection = (sectionId) => {
+    const updated = sections.filter((s) => s.id !== sectionId);
+    setSections(updated);
+    onUpdatePaper({ sections: updated });
   };
 
   const handleCreateCard = (e) => {
@@ -60,6 +133,11 @@ export default function PaperDetail({
     setNewBack('');
     setShowAddCard(false);
   };
+
+  const completedSectionsCount = sections.filter((s) => s.completed).length;
+  const sectionsProgressPercent = sections.length > 0
+    ? Math.round((completedSectionsCount / sections.length) * 100)
+    : 0;
 
   return (
     <div className="flex-1 flex flex-col bg-slate-900 overflow-hidden">
@@ -78,14 +156,22 @@ export default function PaperDetail({
               onClick={() => onOpenPdf(paper)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600/20 text-indigo-300 hover:bg-indigo-600/30 text-xs font-medium border border-indigo-500/30 transition-colors"
             >
-              <Eye className="w-3.5 h-3.5" /> Open PDF Reader
+              <Eye className="w-3.5 h-3.5" /> Open PDF Reader (Page {currentPage})
             </button>
           )}
           <button
             onClick={handleSaveNotes}
             className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-colors shadow-md shadow-indigo-600/20"
           >
-            <Save className="w-3.5 h-3.5" /> Save Changes
+            {saveSuccess ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-300" /> Saved!
+              </>
+            ) : (
+              <>
+                <Save className="w-3.5 h-3.5" /> Save Changes
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -93,7 +179,7 @@ export default function PaperDetail({
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Specs & Reading Controls Sidebar */}
-        <div className="w-80 border-r border-slate-800 p-6 flex flex-col justify-between overflow-y-auto bg-slate-950/20">
+        <div className="w-80 border-r border-slate-800 p-6 flex flex-col justify-between overflow-y-auto bg-slate-950/20 space-y-6 shrink-0">
           <div className="space-y-6">
             <div>
               <h1 className="text-lg font-bold text-slate-100 leading-snug">{paper.title}</h1>
@@ -110,7 +196,11 @@ export default function PaperDetail({
               </label>
               <select
                 value={status}
-                onChange={(e) => setStatus(e.target.value)}
+                onChange={(e) => {
+                  const newStatus = e.target.value;
+                  setStatus(newStatus);
+                  onUpdatePaper({ status: newStatus });
+                }}
                 className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
               >
                 <option value="Not Started">Not Started</option>
@@ -122,24 +212,114 @@ export default function PaperDetail({
             {/* Page Reading Tracker */}
             <div className="space-y-3 bg-slate-800/40 p-4 rounded-xl border border-slate-700/50">
               <div className="flex justify-between items-center text-xs text-slate-300 font-medium">
-                <span>Page Tracker</span>
+                <span>Page Resumption Tracker</span>
                 <span className="font-mono text-indigo-400">
-                  {Math.min(100, Math.round(((currentPage || 0) / (paper.totalPages || 1)) * 100))}{
-                  ' '
-                }%
+                  {Math.min(
+                    100,
+                    Math.round(((currentPage || 1) / (paper.totalPages || 1)) * 100)
+                  )}
+                  %
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <input
                   type="number"
-                  min="0"
+                  min="1"
                   max={paper.totalPages || 999}
                   value={currentPage}
-                  onChange={(e) => setCurrentPage(e.target.value)}
+                  onChange={(e) => {
+                    const val = Number(e.target.value) || 1;
+                    setCurrentPage(val);
+                    onUpdatePaper({ currentPage: val });
+                  }}
                   className="w-20 bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1 text-center text-sm font-mono text-slate-100 focus:outline-none focus:border-indigo-500"
                 />
-                <span className="text-xs text-slate-500">/ {paper.totalPages || 1} total</span>
+                <span className="text-xs text-slate-500">
+                  / {paper.totalPages || 1} total pages
+                </span>
               </div>
+            </div>
+
+            {/* Section Reading Checklist (Sidebar Widget) */}
+            <div className="space-y-3 bg-slate-800/40 p-4 rounded-xl border border-slate-700/50">
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-300">
+                <span className="flex items-center gap-1.5">
+                  <ListChecks className="w-4 h-4 text-emerald-400" /> Sections Checklist
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono text-[10px]">
+                  {completedSectionsCount} / {sections.length} read
+                </span>
+              </div>
+
+              <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden">
+                <div
+                  className="bg-emerald-500 h-full rounded-full transition-all duration-300"
+                  style={{ width: `${sectionsProgressPercent}%` }}
+                />
+              </div>
+
+              <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                {sections.map((sec) => (
+                  <label
+                    key={sec.id}
+                    className="flex items-center justify-between gap-2 p-1.5 rounded-lg hover:bg-slate-700/40 cursor-pointer text-xs group transition-colors"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <input
+                        type="checkbox"
+                        checked={sec.completed}
+                        onChange={() => handleToggleSection(sec.id)}
+                        className="hidden"
+                      />
+                      {sec.completed ? (
+                        <CheckSquare className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      ) : (
+                        <Square className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                      )}
+                      <span
+                        className={`truncate ${
+                          sec.completed ? 'line-through text-slate-500' : 'text-slate-200'
+                        }`}
+                      >
+                        {sec.name}
+                      </span>
+                    </div>
+                    {!DEFAULT_ACADEMIC_SECTIONS.includes(sec.name) && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteSection(sec.id);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 transition-opacity p-0.5"
+                        title="Remove custom section"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
+                  </label>
+                ))}
+              </div>
+
+              {/* Inline Add Section */}
+              <form
+                onSubmit={handleAddSection}
+                className="flex gap-1.5 pt-1 border-t border-slate-700/40"
+              >
+                <input
+                  type="text"
+                  placeholder="Add custom section..."
+                  value={newCustomSection}
+                  onChange={(e) => setNewCustomSection(e.target.value)}
+                  className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-[11px] text-slate-200 focus:outline-none focus:border-indigo-500"
+                />
+                <button
+                  type="submit"
+                  className="p-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors text-xs"
+                  title="Add Section"
+                >
+                  <PlusCircle className="w-3.5 h-3.5" />
+                </button>
+              </form>
             </div>
 
             {/* Tags */}
@@ -163,7 +343,7 @@ export default function PaperDetail({
           </div>
         </div>
 
-        {/* Right Tabbed Section (Notes & Flashcards) */}
+        {/* Right Tabbed Section (Notes, Sections Checklist & Flashcards) */}
         <div className="flex-1 flex flex-col bg-slate-900 overflow-hidden">
           {/* Tabs header */}
           <div className="flex border-b border-slate-800 px-6 pt-3 bg-slate-950/20">
@@ -176,6 +356,17 @@ export default function PaperDetail({
               }`}
             >
               <FileText className="w-4 h-4" /> Paper Notes Scratchpad
+            </button>
+            <button
+              onClick={() => setActiveSubTab('sections')}
+              className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors ${
+                activeSubTab === 'sections'
+                  ? 'border-indigo-500 text-indigo-400'
+                  : 'border-transparent text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <ListChecks className="w-4 h-4" /> Section Checklist ({completedSectionsCount}/
+              {sections.length})
             </button>
             <button
               onClick={() => setActiveSubTab('flashcards')}
@@ -200,8 +391,81 @@ export default function PaperDetail({
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="Write down key equations, takeaways, methodologies, or criticisms..."
-                  className="flex-1 w-full bg-slate-950/60 border border-slate-800 rounded-xl p-4 text-sm text-slate-200 font-mono placeholder-slate-600 focus:outline-none focus:border-indigo-500/80 resize-none leading-relaxed"
+                  className="flex-1 w-full bg-slate-950/60 border border-slate-800 rounded-xl p-4 text-sm text-slate-200 font-mono placeholder-slate-600 focus:outline-none focus:border-indigo-500/80 resize-none leading-relaxed min-h-[300px]"
                 />
+              </div>
+            ) : activeSubTab === 'sections' ? (
+              <div className="space-y-6 max-w-3xl">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                      Academic Paper Reading Workflow
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Track reading progress through academic sections.
+                    </p>
+                  </div>
+                  <span className="px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 font-mono text-xs font-semibold">
+                    {completedSectionsCount} of {sections.length} sections read • {sectionsProgressPercent}%
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {sections.map((sec) => (
+                    <div
+                      key={sec.id}
+                      onClick={() => handleToggleSection(sec.id)}
+                      className={`p-4 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${
+                        sec.completed
+                          ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-200'
+                          : 'bg-slate-800/40 border-slate-700/60 hover:border-slate-600 text-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        {sec.completed ? (
+                          <CheckSquare className="w-5 h-5 text-emerald-400 shrink-0" />
+                        ) : (
+                          <Square className="w-5 h-5 text-slate-500 shrink-0" />
+                        )}
+                        <span
+                          className={`text-xs font-medium truncate ${
+                            sec.completed ? 'line-through text-slate-400' : ''
+                          }`}
+                        >
+                          {sec.name}
+                        </span>
+                      </div>
+                      {!DEFAULT_ACADEMIC_SECTIONS.includes(sec.name) && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteSection(sec.id);
+                          }}
+                          className="text-slate-500 hover:text-rose-400 p-1 rounded hover:bg-slate-700/50 transition-colors shrink-0 ml-2"
+                          title="Remove custom section"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <form onSubmit={handleAddSection} className="flex gap-2 pt-2">
+                  <input
+                    type="text"
+                    placeholder="Add custom section name (e.g. Appendix A, Ablation Study)..."
+                    value={newCustomSection}
+                    onChange={(e) => setNewCustomSection(e.target.value)}
+                    className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                  />
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-medium transition-colors flex items-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add Section
+                  </button>
+                </form>
               </div>
             ) : (
               <div className="space-y-6">
@@ -278,7 +542,7 @@ export default function PaperDetail({
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
                             <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-700 text-slate-300">
-                              {card.mastery || 'New'}
+                              {card.masteryLevel || card.mastery || 'New'}
                             </span>
                             <button
                               onClick={() => onDeleteFlashcard(card.id)}
