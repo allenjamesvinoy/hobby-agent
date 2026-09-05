@@ -3,6 +3,8 @@ import sys
 import json
 import ast
 import re
+import time
+import random
 from pathlib import Path
 from typing import Dict, Tuple, Any
 
@@ -23,6 +25,45 @@ def get_gemini_client():
     return genai.Client(api_key=api_key)
 
 MODEL_NAME = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
+
+def call_gemini_with_retry(client, prompt: str, temperature: float = 0.2, max_retries: int = 5):
+    """Calls Gemini with automatic exponential backoff for 503 UNAVAILABLE or 429 rate limit spikes."""
+    from google.genai import types
+
+    config = types.GenerateContentConfig(
+        response_mime_type="application/json",
+        temperature=temperature
+    )
+
+    models_to_try = [MODEL_NAME]
+    for alt in ["gemini-2.0-flash", "gemini-1.5-flash"]:
+        if alt not in models_to_try:
+            models_to_try.append(alt)
+
+    last_exc = None
+    for model in models_to_try:
+        for attempt in range(1, max_retries + 1):
+            try:
+                print(f"📡 Calling Gemini ({model}, attempt {attempt}/{max_retries})...")
+                return client.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                    config=config
+                )
+            except Exception as e:
+                last_exc = e
+                err_str = str(e)
+                is_transient = any(code in err_str for code in ["503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "500", "502", "504"])
+                if is_transient and attempt < max_retries:
+                    wait_time = (2 ** attempt) + random.uniform(1.0, 3.0)
+                    print(f"⏳ Temporary spike ({err_str[:60]}...). Backing off for {wait_time:.1f}s...")
+                    time.sleep(wait_time)
+                else:
+                    if model != models_to_try[-1] and is_transient:
+                        print(f"⚠️ Switching to fallback model after repeated spikes on {model}...")
+                    break
+
+    raise last_exc
 
 def detect_project_kind(idea_title: str, idea_body: str) -> str:
     """Classifies the project as 'web' (React/HTML/JS) or 'python_cli'."""
@@ -168,15 +209,7 @@ Return a single, raw JSON object:
 Do NOT wrap your JSON in markdown code blocks (no ```json). Output pure JSON only.
 """
 
-    from google.genai import types
-    response = client.models.generate_content(
-        model=MODEL_NAME,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            temperature=0.2
-        )
-    )
+    response = call_gemini_with_retry(client, prompt, temperature=0.2)
     data = safe_parse_json(response.text)
     return data.get("files", {})
 
@@ -219,15 +252,7 @@ Return raw JSON only:
   "review_summary": "### 🤖 Autonomous Agent PR Summary\\n\\n#### 🌟 What was built\\n- ...\\n\\n#### 🛠️ Files Added\\n- ...\\n\\n#### 🔍 Reviewer Fixes & Verification Notes\\n- ..."
 }}
 """
-    from google.genai import types
-    response = client.models.generate_content(
-        model=MODEL_NAME,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            temperature=0.1
-        )
-    )
+    response = call_gemini_with_retry(client, prompt, temperature=0.1)
     try:
         data = safe_parse_json(response.text)
         return data.get("files", generated_files), data.get("review_summary", "Automated PR generated.")
