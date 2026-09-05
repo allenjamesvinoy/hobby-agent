@@ -235,12 +235,29 @@ Return raw JSON only:
         print(f"⚠️ Reviewer JSON parsing failed ({e}). Retaining coder generated files directly.")
         return generated_files, f"### 🤖 Autonomous Agent PR Summary\n\nAutomated implementation for **{idea_title}**."
 
+def get_idea_details() -> Tuple[str, str]:
+    """Reads idea title and body safely from GITHUB_EVENT_PATH or environment."""
+    event_path = os.environ.get("GITHUB_EVENT_PATH")
+    if event_path and os.path.exists(event_path):
+        try:
+            with open(event_path, "r", encoding="utf-8") as f:
+                event = json.load(f)
+            if "issue" in event:
+                return event["issue"].get("title", ""), event["issue"].get("body", "")
+            elif "inputs" in event:
+                return event["inputs"].get("idea_title", ""), event["inputs"].get("idea_body", "")
+        except Exception:
+            pass
+
+    title = os.environ.get("IDEA_TITLE", "CLI Habit Tracker")
+    body = os.environ.get("IDEA_BODY", "A command-line habit tracker with streak counting and JSON storage.")
+    return title, body
+
 def main():
     root = Path(__file__).resolve().parent.parent
     loader = ContextLoader(root)
 
-    idea_title = os.environ.get("IDEA_TITLE", "CLI Habit Tracker")
-    idea_body = os.environ.get("IDEA_BODY", "A command-line habit tracker with streak counting and JSON storage.")
+    idea_title, idea_body = get_idea_details()
 
     project_kind = detect_project_kind(idea_title, idea_body)
     print(f"🔍 Detected project type: '{project_kind.upper()}'")

@@ -40,20 +40,35 @@ jobs:
 
       - name: Extract Issue or Dispatch Variables
         id: vars
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_NUM: ${{ github.event.issue.number }}
+          INPUT_TITLE: ${{ github.event.inputs.idea_title }}
+          INPUT_BODY: ${{ github.event.inputs.idea_body }}
+          RUN_ID: ${{ github.run_id }}
         run: |
-          if [ "${{ github.event_name }}" = "issues" ]; then
-            echo "TITLE=${{ github.event.issue.title }}" >> $GITHUB_ENV
-            echo "BODY<<EOF" >> $GITHUB_ENV
-            echo "${{ github.event.issue.body }}" >> $GITHUB_ENV
-            echo "EOF" >> $GITHUB_ENV
-            echo "BRANCH_NAME=idea-issue-${{ github.event.issue.number }}" >> $GITHUB_ENV
-          else
-            echo "TITLE=${{ github.event.inputs.idea_title }}" >> $GITHUB_ENV
-            echo "BODY<<EOF" >> $GITHUB_ENV
-            echo "${{ github.event.inputs.idea_body }}" >> $GITHUB_ENV
-            echo "EOF" >> $GITHUB_ENV
-            echo "BRANCH_NAME=idea-manual-${{ github.run_id }}" >> $GITHUB_ENV
-          fi
+          python3 - << 'EOF_EXTRACT'
+          import os
+
+          event = os.environ.get("EVENT_NAME", "")
+          if event == "issues":
+              title = os.environ.get("ISSUE_TITLE", "")
+              body = os.environ.get("ISSUE_BODY", "")
+              branch = f"idea-issue-{os.environ.get('ISSUE_NUM', '0')}"
+          else:
+              title = os.environ.get("INPUT_TITLE", "")
+              body = os.environ.get("INPUT_BODY", "")
+              branch = f"idea-manual-{os.environ.get('RUN_ID', '0')}"
+
+          env_file = os.environ.get("GITHUB_ENV")
+          if env_file:
+              with open(env_file, "a", encoding="utf-8") as f:
+                  f.write(f"BRANCH_NAME={branch}\n")
+                  f.write("TITLE<<DELIM_TITLE\n" + title + "\nDELIM_TITLE\n")
+                  f.write("BODY<<DELIM_BODY\n" + body + "\nDELIM_BODY\n")
+          EOF_EXTRACT
 
       - name: Run Multi-Agent System (Coder & Reviewer)
         env:
