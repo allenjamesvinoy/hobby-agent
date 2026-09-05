@@ -1,0 +1,87 @@
+name: Build macOS Desktop App (.dmg)
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: 'Directory name under apps/ (leave blank to auto-detect)'
+        required: false
+        default: ''
+  push:
+    branches: [ main ]
+    paths:
+      - 'apps/**'
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Locate Target App
+        id: locate
+        run: |
+          if [ -n "${{ github.event.inputs.app_name }}" ]; then
+            TARGET="apps/${{ github.event.inputs.app_name }}"
+          else
+            TARGET=$(find apps -mindepth 1 -maxdepth 1 -type d | head -n 1)
+          fi
+
+          if [ -z "$TARGET" ] || [ ! -d "$TARGET" ]; then
+            echo "❌ Error: No app directory found under apps/"
+            exit 1
+          fi
+
+          echo "TARGET_DIR=$TARGET" >> $GITHUB_ENV
+          echo "APP_NAME=$(basename $TARGET)" >> $GITHUB_ENV
+          echo "🎯 Building application located in: $TARGET"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install App Dependencies
+        run: |
+          cd ${{ env.TARGET_DIR }}
+          npm install
+
+      - name: Build Web Assets (if applicable)
+        run: |
+          cd ${{ env.TARGET_DIR }}
+          if npm run | grep -q "build"; then
+            echo "⚙️ Running npm run build..."
+            npm run build
+          fi
+
+      - name: Package macOS .dmg Installer
+        env:
+          # Disable code signing requirements for local/hobby builds
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: |
+          cd ${{ env.TARGET_DIR }}
+          if npm run | grep -q "dist"; then
+            npm run dist -- --mac dmg
+          elif npm run | grep -q "package"; then
+            npm run package -- --mac dmg
+          else
+            npx electron-builder --mac dmg
+          fi
+
+      - name: Upload .dmg Installer to GitHub Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-macOS-Installer
+          path: ${{ env.TARGET_DIR }}/dist*/**/*.dmg
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Summary
+        run: |
+          echo "### 🍏 macOS .dmg Installer Ready!" >> $GITHUB_STEP_SUMMARY
+          echo "Download your installer from the **Artifacts** section below, double-click to mount, and drag the app into your Applications folder." >> $GITHUB_STEP_SUMMARY
