@@ -68,7 +68,7 @@ export default function PdfViewerModal({
   const [currentPage, setCurrentPage] = useState(initialPage || 1);
   const [sections, setSections] = useState([]);
   const [showSectionsSidebar, setShowSectionsSidebar] = useState(true);
-  const [sidebarTab, setSidebarTab] = useState('sections'); // 'sections' | 'flashcards'
+  const [sidebarTab, setSidebarTab] = useState('sections');
   const [isScanningSections, setIsScanningSections] = useState(false);
   const [scanMethod, setScanMethod] = useState('');
   const [renderedPages, setRenderedPages] = useState({});
@@ -143,7 +143,6 @@ export default function PdfViewerModal({
     }
   };
 
-  // Keyboard shortcut for Cmd+K / Ctrl+K
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e) => {
@@ -160,7 +159,6 @@ export default function PdfViewerModal({
     currentPageRef.current = currentPage;
   }, [currentPage]);
 
-  // Load PDF Document via PDF.js
   useEffect(() => {
     if (!isOpen || !rawUrl) return;
 
@@ -198,7 +196,6 @@ export default function PdfViewerModal({
     };
   }, [isOpen, rawUrl]);
 
-  // Dynamic IntersectionObserver for Scroll-based Page Detection
   useEffect(() => {
     if (!isOpen || !pdfDoc) return;
     const container = scrollContainerRef.current;
@@ -238,7 +235,6 @@ export default function PdfViewerModal({
     };
   }, [isOpen, pdfDoc, numPages]);
 
-  // Render page canvas continuously with HiDPI / Retina resolution
   useEffect(() => {
     if (!pdfDoc || !isOpen) return;
     let isCancelled = false;
@@ -247,7 +243,6 @@ export default function PdfViewerModal({
       if (renderingRef.current[pageNum] || renderedPages[pageNum]) return;
       renderingRef.current[pageNum] = true;
 
-      // Cancel any ongoing render task on this canvas
       if (renderTasksRef.current[pageNum]) {
         try {
           renderTasksRef.current[pageNum].cancel();
@@ -263,11 +258,9 @@ export default function PdfViewerModal({
         const canvas = canvasRefs.current[pageNum];
         if (!canvas) return;
 
-        // Actual bitmap resolution scaled for HiDPI/Retina screens
         canvas.width = Math.floor(viewport.width * dpr);
         canvas.height = Math.floor(viewport.height * dpr);
 
-        // Display size in CSS pixels (ensures sharp, proportional 1:1 aspect ratio)
         canvas.style.width = `${Math.floor(viewport.width)}px`;
         canvas.style.height = `${Math.floor(viewport.height)}px`;
 
@@ -317,7 +310,6 @@ export default function PdfViewerModal({
     };
   }, [pdfDoc, isOpen, numPages, scale]);
 
-  // Scroll to initial saved page on load
   useEffect(() => {
     if (isOpen && pdfDoc && !isInitialScrollDone.current) {
       const targetPage = initialPage || (paper && paper.currentPage) || 1;
@@ -328,7 +320,6 @@ export default function PdfViewerModal({
     }
   }, [isOpen, pdfDoc, initialPage]);
 
-  // 3-Tier Section Scanner Implementation
   const runSectionScanner = async () => {
     if (!pdfDoc) return;
     setIsScanningSections(true);
@@ -337,10 +328,9 @@ export default function PdfViewerModal({
     let detected = [];
 
     try {
-      // Tier 1: Embedded PDF Outline
       const outline = await pdfDoc.getOutline();
       if (outline && outline.length > 0) {
-        setScanMethod('Tier 1: Embedded Bookmark Outline');
+        setScanMethod('Tier 1: Embedded Outline');
         for (const item of outline) {
           let pageNum = 1;
           if (item.dest) {
@@ -363,9 +353,8 @@ export default function PdfViewerModal({
         }
       }
 
-      // Tier 2: Digital Text Parsing regex fallback
       if (detected.length === 0) {
-        setScanMethod('Tier 2: Extracting Digital Text Headers');
+        setScanMethod('Tier 2: Text Extraction');
         let totalTextItems = 0;
         for (let i = 1; i <= numPages; i++) {
           const page = await pdfDoc.getPage(i);
@@ -386,9 +375,8 @@ export default function PdfViewerModal({
           }
         }
 
-        // Tier 3: Local OCR via Tesseract.js if text content is 0 (scanned PDF)
         if (detected.length === 0 && totalTextItems < 10) {
-          setScanMethod('Tier 3: Local WebAssembly OCR (Scanned Paper)');
+          setScanMethod('Tier 3: OCR Detection');
           for (let i = 1; i <= Math.min(numPages, 10); i++) {
             const canvas = canvasRefs.current[i];
             if (canvas) {
@@ -427,7 +415,6 @@ export default function PdfViewerModal({
     }
   };
 
-  // Trigger section scanner on doc load if paper has no custom sections
   useEffect(() => {
     if (pdfDoc && paper) {
       if (paper.sections && paper.sections.length > 0 && paper.sections[0].startPage) {
@@ -438,7 +425,6 @@ export default function PdfViewerModal({
     }
   }, [pdfDoc, paper?.id]);
 
-  // Silent Dwell-Time Auto-Marking Engine
   useEffect(() => {
     if (!isOpen || !sections.length) return;
 
@@ -498,14 +484,14 @@ export default function PdfViewerModal({
   if (!isOpen || !rawUrl) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex flex-col p-4 select-none">
+    <div className="fixed inset-0 z-50 bg-stone-900/40 backdrop-blur-sm flex flex-col p-4 select-none">
       {/* Top Navigation & Status Bar */}
-      <div className="flex items-center justify-between mb-3 text-slate-100 bg-slate-900 px-4 py-2.5 rounded-xl border border-slate-800 shadow-xl shrink-0">
+      <div className="flex items-center justify-between mb-3 text-stone-800 bg-white px-4 py-2.5 rounded-xl border border-stone-200/90 shadow-md shrink-0">
         <div className="flex items-center gap-2 sm:gap-3">
           <button
             onClick={() => setShowSectionsSidebar(!showSectionsSidebar)}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-              showSectionsSidebar ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40' : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              showSectionsSidebar ? 'bg-stone-100 text-stone-900 border border-stone-200' : 'bg-white text-stone-500 hover:text-stone-800'
             }`}
             title="Toggle Outline / Flashcards Sidebar"
           >
@@ -516,55 +502,54 @@ export default function PdfViewerModal({
           {/* Quick Create Flashcard Button */}
           <button
             onClick={handleOpenCardModal}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md transition-all hover:scale-105 active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 text-white text-xs font-medium shadow-xs transition-all hover:scale-105 active:scale-95"
             title="Create Flashcard from current reading spot (⌘+K / Ctrl+K)"
           >
             <Brain className="w-3.5 h-3.5" />
             <span>+ Flashcard</span>
             {paperFlashcards.length > 0 && (
-              <span className="ml-0.5 px-1.5 py-0.2 bg-indigo-900/90 text-indigo-200 rounded-full text-[10px] font-mono">
+              <span className="ml-0.5 px-1.5 py-0.2 bg-stone-700 text-white rounded-full text-[10px] font-mono">
                 {paperFlashcards.length}
               </span>
             )}
           </button>
 
           {cardSavedFeedback && (
-            <span className="flex items-center gap-1 text-[11px] text-emerald-400 font-mono animate-in fade-in">
+            <span className="flex items-center gap-1 text-[11px] text-emerald-600 font-mono animate-in fade-in">
               <Check className="w-3.5 h-3.5" /> Saved!
             </span>
           )}
 
-          <h3 className="font-bold text-xs truncate max-w-xs md:max-w-sm text-slate-200 hidden md:block" title={title || 'PDF Document'}>
+          <h3 className="font-semibold text-xs truncate max-w-xs md:max-w-sm text-stone-800 hidden md:block" title={title || 'PDF Document'}>
             {title || 'PDF Document'}
           </h3>
         </div>
 
         {/* Center: Page Navigation & Zoom Controls */}
         <div className="flex items-center gap-2">
-          {/* Scroll Page Indicator & Controller */}
-          <div className="flex items-center gap-2 bg-slate-800/80 px-3 py-1 rounded-lg border border-slate-700/60 font-mono text-xs">
+          <div className="flex items-center gap-2 bg-stone-50 px-3 py-1 rounded-lg border border-stone-200/80 font-mono text-xs">
             <button
               onClick={() => scrollToPage(currentPage - 1)}
               disabled={currentPage <= 1}
-              className="p-1 hover:bg-slate-700 rounded text-slate-300 disabled:opacity-30 transition-colors"
+              className="p-1 hover:bg-stone-200/60 rounded text-stone-600 disabled:opacity-30 transition-colors"
               title="Previous Page"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <span className="text-slate-400">Page</span>
+            <span className="text-stone-400">Page</span>
             <input
               type="number"
               min="1"
               max={numPages}
               value={currentPage}
               onChange={(e) => scrollToPage(Number(e.target.value) || 1)}
-              className="w-12 text-center bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-xs text-indigo-300 font-bold focus:outline-none focus:border-indigo-500"
+              className="w-12 text-center bg-white border border-stone-200 rounded px-1 py-0.5 text-xs text-stone-900 font-bold focus:outline-none focus:border-stone-400"
             />
-            <span className="text-slate-400">of {numPages}</span>
+            <span className="text-stone-400">of {numPages}</span>
             <button
               onClick={() => scrollToPage(currentPage + 1)}
               disabled={currentPage >= numPages}
-              className="p-1 hover:bg-slate-700 rounded text-slate-300 disabled:opacity-30 transition-colors"
+              className="p-1 hover:bg-stone-200/60 rounded text-stone-600 disabled:opacity-30 transition-colors"
               title="Next Page"
             >
               <ChevronRight className="w-4 h-4" />
@@ -572,18 +557,18 @@ export default function PdfViewerModal({
           </div>
 
           {/* Zoom Controls */}
-          <div className="flex items-center gap-1 bg-slate-800/80 px-2 py-1 rounded-lg border border-slate-700/60 font-mono text-xs">
+          <div className="flex items-center gap-1 bg-stone-50 px-2 py-1 rounded-lg border border-stone-200/80 font-mono text-xs">
             <button
               onClick={() => handleZoom(scale - 0.2)}
               disabled={scale <= 0.6}
-              className="p-1 hover:bg-slate-700 rounded text-slate-300 disabled:opacity-30 transition-colors"
+              className="p-1 hover:bg-stone-200/60 rounded text-stone-600 disabled:opacity-30 transition-colors"
               title="Zoom Out"
             >
               <ZoomOut className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => handleZoom(1.25)}
-              className="px-1.5 py-0.5 hover:bg-slate-700 rounded text-slate-200 text-xs font-semibold"
+              className="px-1.5 py-0.5 hover:bg-stone-200/60 rounded text-stone-700 text-xs font-semibold"
               title="Reset Zoom (125%)"
             >
               {Math.round(scale * 100)}%
@@ -591,14 +576,14 @@ export default function PdfViewerModal({
             <button
               onClick={() => handleZoom(scale + 0.2)}
               disabled={scale >= 2.5}
-              className="p-1 hover:bg-slate-700 rounded text-slate-300 disabled:opacity-30 transition-colors"
+              className="p-1 hover:bg-stone-200/60 rounded text-stone-600 disabled:opacity-30 transition-colors"
               title="Zoom In"
             >
               <ZoomIn className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => handleZoom(scale === 1.0 ? 1.4 : 1.0)}
-              className="p-1 hover:bg-slate-700 rounded text-slate-300 transition-colors ml-0.5"
+              className="p-1 hover:bg-stone-200/60 rounded text-stone-600 transition-colors ml-0.5"
               title={scale === 1.0 ? "Enlarge View (140%)" : "Fit 100%"}
             >
               <Maximize2 className="w-3.5 h-3.5" />
@@ -610,17 +595,17 @@ export default function PdfViewerModal({
           {onOpenSettings && (
             <button
               onClick={onOpenSettings}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors border border-slate-700/60"
-              title="Reading Dwell Settings"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-medium transition-colors border border-stone-200"
+              title="Reading Settings"
             >
-              <Settings className="w-3.5 h-3.5 text-indigo-400" />
-              <span className="hidden sm:inline">{settings.dwellThresholdMinutes}m Auto-Mark</span>
+              <Settings className="w-3.5 h-3.5 text-stone-600" />
+              <span className="hidden sm:inline">{settings.dwellThresholdMinutes}m Threshold</span>
             </button>
           )}
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded-lg transition-colors"
-            title="Close PDF"
+            className="p-1.5 text-stone-400 hover:text-stone-800 hover:bg-stone-100 rounded-lg transition-colors"
+            title="Close Reader"
           >
             <X className="w-5 h-5" />
           </button>
@@ -631,16 +616,16 @@ export default function PdfViewerModal({
       <div className="flex-1 flex overflow-hidden gap-4">
         {/* Collapsible Sections & Flashcards Sidebar */}
         {showSectionsSidebar && (
-          <div className="w-72 bg-slate-900 border border-slate-800 rounded-xl p-3 flex flex-col justify-between shrink-0 overflow-y-auto space-y-3 shadow-xl">
+          <div className="w-72 bg-[#f7f6f3] border border-stone-200/90 rounded-xl p-3 flex flex-col justify-between shrink-0 overflow-y-auto space-y-3 shadow-md">
             <div className="space-y-3">
               {/* Sidebar Tabs */}
-              <div className="grid grid-cols-2 p-1 bg-slate-950/80 rounded-lg border border-slate-800 text-xs font-semibold">
+              <div className="grid grid-cols-2 p-1 bg-stone-200/60 rounded-lg border border-stone-200/80 text-xs font-semibold">
                 <button
                   onClick={() => setSidebarTab('sections')}
                   className={`py-1.5 rounded-md text-center transition-all flex items-center justify-center gap-1.5 ${
                     sidebarTab === 'sections'
-                      ? 'bg-indigo-600 text-white shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200'
+                      ? 'bg-white text-stone-900 shadow-xs'
+                      : 'text-stone-500 hover:text-stone-800'
                   }`}
                 >
                   <Sparkles className="w-3.5 h-3.5" /> Outline
@@ -649,8 +634,8 @@ export default function PdfViewerModal({
                   onClick={() => setSidebarTab('flashcards')}
                   className={`py-1.5 rounded-md text-center transition-all flex items-center justify-center gap-1.5 ${
                     sidebarTab === 'flashcards'
-                      ? 'bg-indigo-600 text-white shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200'
+                      ? 'bg-white text-stone-900 shadow-xs'
+                      : 'text-stone-500 hover:text-stone-800'
                   }`}
                 >
                   <Brain className="w-3.5 h-3.5" /> Cards ({paperFlashcards.length})
@@ -659,32 +644,32 @@ export default function PdfViewerModal({
 
               {sidebarTab === 'sections' ? (
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                    <span className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-indigo-400" /> Detected Sections
+                  <div className="flex items-center justify-between border-b border-stone-200/80 pb-2">
+                    <span className="text-[11px] font-bold text-stone-700 uppercase tracking-wider font-mono flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-stone-500" /> Outline Sections
                     </span>
                     <button
                       onClick={runSectionScanner}
                       disabled={isScanningSections}
-                      className="text-[10px] text-indigo-400 hover:text-indigo-300 font-mono underline disabled:opacity-50"
+                      className="text-[10px] text-stone-600 hover:text-stone-900 font-mono underline disabled:opacity-50"
                     >
                       Re-Scan
                     </button>
                   </div>
 
                   {isScanningSections ? (
-                    <div className="py-8 text-center space-y-2 text-slate-400 text-xs">
-                      <Loader2 className="w-6 h-6 text-indigo-400 animate-spin mx-auto" />
-                      <p className="font-mono text-[11px]">{scanMethod}</p>
+                    <div className="py-8 text-center space-y-2 text-stone-500 text-xs">
+                      <Loader2 className="w-5 h-5 text-stone-700 animate-spin mx-auto" />
+                      <p className="font-mono text-[10px]">{scanMethod}</p>
                     </div>
                   ) : sections.length === 0 ? (
-                    <div className="py-8 text-center text-slate-500 text-xs space-y-2 font-mono">
+                    <div className="py-8 text-center text-stone-400 text-xs space-y-2 font-mono">
                       <p>No outline sections detected.</p>
                       <button
                         onClick={runSectionScanner}
-                        className="px-3 py-1 bg-indigo-600/30 text-indigo-300 rounded border border-indigo-500/30 text-xs"
+                        className="px-3 py-1 bg-white text-stone-700 rounded border border-stone-200 text-xs font-sans shadow-xs"
                       >
-                        Run Section Intelligence
+                        Scan PDF Outline
                       </button>
                     </div>
                   ) : (
@@ -697,20 +682,20 @@ export default function PdfViewerModal({
                             onClick={() => scrollToPage(sec.startPage || 1)}
                             className={`p-2.5 rounded-lg text-xs cursor-pointer transition-all border flex items-center justify-between ${
                               isActive
-                                ? 'bg-indigo-600/20 border-indigo-500/50 text-indigo-200 font-medium'
-                                : 'bg-slate-800/40 border-slate-700/40 hover:bg-slate-800 text-slate-300'
+                                ? 'bg-white border-stone-300 text-stone-900 font-medium shadow-xs'
+                                : 'bg-stone-50/50 border-stone-200/60 hover:bg-white text-stone-700'
                             }`}
                           >
                             <div className="min-w-0 pr-2 space-y-0.5">
                               <p className="truncate font-medium">{sec.name}</p>
-                              <p className="text-[10px] text-slate-500 font-mono">
+                              <p className="text-[10px] text-stone-400 font-mono">
                                 Page {sec.startPage} {sec.endPage ? `- ${sec.endPage}` : ''}
                               </p>
                             </div>
                             {sec.completed ? (
-                              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                             ) : (
-                              <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                              <Clock className="w-3.5 h-3.5 text-stone-400 shrink-0" />
                             )}
                           </div>
                         );
@@ -721,27 +706,27 @@ export default function PdfViewerModal({
               ) : (
                 /* Flashcards Tab Content */
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                    <span className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                      <Brain className="w-3.5 h-3.5 text-indigo-400" /> Active Recall
+                  <div className="flex items-center justify-between border-b border-stone-200/80 pb-2">
+                    <span className="text-[11px] font-bold text-stone-700 uppercase tracking-wider font-mono flex items-center gap-1.5">
+                      <Brain className="w-3.5 h-3.5 text-stone-500" /> Active Recall
                     </span>
                     <button
                       onClick={handleOpenCardModal}
-                      className="text-[11px] font-semibold text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
+                      className="text-[11px] font-semibold text-stone-800 hover:text-stone-900 flex items-center gap-1"
                     >
                       <Plus className="w-3.5 h-3.5" /> Add
                     </button>
                   </div>
 
                   {paperFlashcards.length === 0 ? (
-                    <div className="py-8 text-center text-slate-500 text-xs space-y-3">
-                      <Brain className="w-8 h-8 mx-auto text-slate-600/70" />
+                    <div className="py-8 text-center text-stone-400 text-xs space-y-3">
+                      <Brain className="w-8 h-8 mx-auto text-stone-300" />
                       <p className="text-[11px]">No flashcards created yet for this paper.</p>
                       <button
                         onClick={handleOpenCardModal}
-                        className="px-3 py-1.5 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 rounded-lg text-xs font-medium border border-indigo-500/30 transition-colors"
+                        className="px-3 py-1.5 bg-white hover:bg-stone-50 text-stone-800 rounded-lg text-xs font-medium border border-stone-200 shadow-xs transition-colors"
                       >
-                        + Create First Card (Page {currentPage})
+                        + Create First Card (p. {currentPage})
                       </button>
                     </div>
                   ) : (
@@ -749,23 +734,23 @@ export default function PdfViewerModal({
                       {paperFlashcards.map((card) => (
                         <div
                           key={card.id}
-                          className="p-2.5 rounded-lg bg-slate-800/60 border border-slate-700/60 hover:border-slate-600 transition-all text-xs space-y-1.5 group"
+                          className="p-2.5 rounded-lg bg-white border border-stone-200/80 hover:border-stone-300 transition-all text-xs space-y-1.5 group shadow-xs"
                         >
                           <div className="flex items-start justify-between gap-1.5">
-                            <p className="font-semibold text-slate-200 leading-snug line-clamp-2">
+                            <p className="font-semibold text-stone-800 leading-snug line-clamp-2">
                               {card.front}
                             </p>
                             {card.sourcePage && (
                               <button
                                 onClick={() => scrollToPage(card.sourcePage)}
-                                className="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800/60 text-[10px] font-mono hover:bg-indigo-900 shrink-0"
+                                className="px-1.5 py-0.5 rounded bg-stone-100 text-stone-600 border border-stone-200 text-[10px] font-mono hover:bg-stone-200 shrink-0"
                                 title={`Jump directly to Page ${card.sourcePage} in PDF`}
                               >
                                 p. {card.sourcePage}
                               </button>
                             )}
                           </div>
-                          <p className="text-slate-400 text-[11px] line-clamp-2 bg-slate-950/60 p-1.5 rounded border border-slate-800/80 font-sans">
+                          <p className="text-stone-600 text-[11px] line-clamp-2 bg-stone-50 p-1.5 rounded border border-stone-100 font-sans">
                             {card.back}
                           </p>
                         </div>
@@ -777,12 +762,12 @@ export default function PdfViewerModal({
             </div>
 
             {/* Silent Dwell / Stats Info Footer */}
-            <div className="pt-3 border-t border-slate-800/80 text-[10px] text-slate-500 font-mono space-y-1">
-              <p className="flex items-center justify-between text-slate-400">
-                <span>Silent Auto-Mark:</span>
-                <span className="text-emerald-400">{settings.autoMarkDwell ? 'ACTIVE' : 'OFF'}</span>
+            <div className="pt-3 border-t border-stone-200/80 text-[10px] text-stone-500 font-mono space-y-1">
+              <p className="flex items-center justify-between text-stone-500">
+                <span>Auto-Mark:</span>
+                <span className="text-emerald-600 font-semibold">{settings.autoMarkDwell ? 'ACTIVE' : 'OFF'}</span>
               </p>
-              <p className="text-slate-500">Dwell: {settings.dwellThresholdMinutes}m/section • {paperFlashcards.length} Cards</p>
+              <p className="text-stone-400">Dwell: {settings.dwellThresholdMinutes}m/section • {paperFlashcards.length} Cards</p>
             </div>
           </div>
         )}
@@ -790,7 +775,7 @@ export default function PdfViewerModal({
         {/* Continuous Canvas Scroll Viewer */}
         <div
           ref={scrollContainerRef}
-          className="flex-1 bg-slate-950 rounded-xl border border-slate-800 overflow-auto p-6 space-y-6 custom-scrollbar shadow-inner"
+          className="flex-1 bg-stone-200/60 rounded-xl border border-stone-200/80 overflow-auto p-6 space-y-6 custom-scrollbar shadow-inner"
         >
           {Array.from({ length: numPages }, (_, idx) => idx + 1).map((pNum) => (
             <div
@@ -802,19 +787,19 @@ export default function PdfViewerModal({
                 height: pageDimensions[pNum] ? `${pageDimensions[pNum].height}px` : undefined,
                 minHeight: pageDimensions[pNum] ? `${pageDimensions[pNum].height}px` : '700px'
               }}
-              className="relative bg-white shadow-2xl mx-auto my-6 rounded-sm border border-slate-300 shrink-0 select-text overflow-hidden"
+              className="relative bg-white shadow-md mx-auto my-6 rounded-sm border border-stone-300 shrink-0 select-text overflow-hidden"
             >
               <canvas
                 ref={(el) => (canvasRefs.current[pNum] = el)}
                 className="block"
               />
               {!renderedPages[pNum] && (
-                <div className="absolute inset-0 bg-slate-100 flex items-center justify-center text-slate-500 text-xs font-mono space-x-2">
-                  <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
+                <div className="absolute inset-0 bg-stone-50 flex items-center justify-center text-stone-500 text-xs font-mono space-x-2">
+                  <Loader2 className="w-5 h-5 animate-spin text-stone-600" />
                   <span>Loading Page {pNum}...</span>
                 </div>
               )}
-              <div className="absolute bottom-3 right-3 bg-slate-900/80 text-white font-mono text-[10px] px-2 py-0.5 rounded shadow pointer-events-none backdrop-blur-sm">
+              <div className="absolute bottom-3 right-3 bg-stone-900/80 text-white font-mono text-[10px] px-2 py-0.5 rounded shadow pointer-events-none backdrop-blur-xs">
                 Page {pNum} / {numPages}
               </div>
             </div>
@@ -824,9 +809,9 @@ export default function PdfViewerModal({
 
       {/* Quick-Create Flashcard Modal */}
       {isCardModalOpen && (
-        <div className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 select-text">
+        <div className="fixed inset-0 z-[60] bg-black/30 backdrop-blur-xs flex items-center justify-center p-4 select-text">
           <div
-            className="w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl p-5 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150"
+            className="w-full max-w-lg bg-white border border-stone-200 rounded-2xl p-5 shadow-xl space-y-4 animate-in fade-in zoom-in-95 duration-150"
             onKeyDown={(e) => {
               if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
                 e.preventDefault();
@@ -835,19 +820,19 @@ export default function PdfViewerModal({
             }}
           >
             {/* Modal Header */}
-            <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+            <div className="flex items-start justify-between border-b border-stone-100 pb-3">
               <div>
-                <h4 className="text-sm font-bold text-slate-100 flex items-center gap-2">
-                  <Brain className="w-4 h-4 text-indigo-400" /> Create Flashcard
+                <h4 className="text-sm font-bold text-stone-800 flex items-center gap-2">
+                  <Brain className="w-4 h-4 text-stone-700" /> Create Flashcard
                 </h4>
-                <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-400 font-mono">
-                  <span className="truncate max-w-[180px] text-slate-300">{title}</span>
+                <div className="flex items-center gap-2 mt-1 text-[11px] text-stone-500 font-mono">
+                  <span className="truncate max-w-[180px] text-stone-700">{title}</span>
                   <span>•</span>
-                  <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-indigo-300">
+                  <span className="px-1.5 py-0.5 rounded bg-stone-100 border border-stone-200 text-stone-800">
                     Page {cardSourcePage}
                   </span>
                   {activeSection && (
-                    <span className="truncate max-w-[140px] text-slate-400">
+                    <span className="truncate max-w-[140px] text-stone-500">
                       ({activeSection.name})
                     </span>
                   )}
@@ -855,7 +840,7 @@ export default function PdfViewerModal({
               </div>
               <button
                 onClick={() => setIsCardModalOpen(false)}
-                className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-slate-200 transition-colors"
+                className="p-1 hover:bg-stone-100 rounded text-stone-400 hover:text-stone-700 transition-colors"
                 title="Close"
               >
                 <X className="w-4 h-4" />
@@ -865,7 +850,7 @@ export default function PdfViewerModal({
             {/* Card Form */}
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">
+                <label className="text-xs font-semibold text-stone-700 block mb-1">
                   Front (Question / Concept / Term)
                 </label>
                 <textarea
@@ -873,54 +858,54 @@ export default function PdfViewerModal({
                   rows={3}
                   value={cardFront}
                   onChange={(e) => setCardFront(e.target.value)}
-                  placeholder="e.g. What does Scaled Dot-Product Attention compute?"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none font-sans"
+                  placeholder="e.g., What does Scaled Dot-Product Attention compute?"
+                  className="w-full bg-stone-50 border border-stone-200 rounded-xl p-3 text-xs text-stone-800 placeholder-stone-400 focus:outline-none focus:border-stone-400 focus:bg-white resize-none font-sans shadow-xs"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">
-                  Back (Answer / Explanation / Key Takeaway)
+                <label className="text-xs font-semibold text-stone-700 block mb-1">
+                  Back (Answer / Explanation / Takeaway)
                 </label>
                 <textarea
                   rows={4}
                   value={cardBack}
                   onChange={(e) => setCardBack(e.target.value)}
-                  placeholder="e.g. It computes the dot products of queries with all keys, divides each by sqrt(d_k), applies softmax, and multiplies by values..."
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none font-sans"
+                  placeholder="e.g., Computes dot products of queries with all keys, divides by sqrt(d_k), applies softmax..."
+                  className="w-full bg-stone-50 border border-stone-200 rounded-xl p-3 text-xs text-stone-800 placeholder-stone-400 focus:outline-none focus:border-stone-400 focus:bg-white resize-none font-sans shadow-xs"
                 />
               </div>
 
               {/* Source Page Selector */}
               <div className="flex items-center justify-between pt-1 text-xs">
-                <span className="text-slate-400 font-mono text-[11px]">
+                <span className="text-stone-500 font-mono text-[11px]">
                   Referenced Page in PDF:
                 </span>
                 <div className="flex items-center gap-1 font-mono">
-                  <span className="text-slate-400">Page</span>
+                  <span className="text-stone-400">Page</span>
                   <input
                     type="number"
                     min="1"
                     max={numPages}
                     value={cardSourcePage}
                     onChange={(e) => setCardSourcePage(Number(e.target.value) || currentPage)}
-                    className="w-14 text-center bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-indigo-300 font-bold focus:outline-none focus:border-indigo-500"
+                    className="w-14 text-center bg-stone-50 border border-stone-200 rounded px-1.5 py-0.5 text-xs text-stone-800 font-bold focus:outline-none focus:border-stone-400"
                   />
-                  <span className="text-slate-500">of {numPages}</span>
+                  <span className="text-stone-400">of {numPages}</span>
                 </div>
               </div>
             </div>
 
             {/* Modal Actions */}
-            <div className="flex items-center justify-between pt-3 border-t border-slate-800">
-              <span className="text-[10px] text-slate-500 font-mono hidden sm:inline">
-                Tip: Press ⌘+Enter to save
+            <div className="flex items-center justify-between pt-3 border-t border-stone-100">
+              <span className="text-[10px] text-stone-400 font-mono hidden sm:inline">
+                Press ⌘+Enter to save
               </span>
               <div className="flex items-center gap-2 ml-auto">
                 <button
                   type="button"
                   onClick={() => setIsCardModalOpen(false)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-stone-500 hover:text-stone-800 hover:bg-stone-100 transition-colors"
                 >
                   Cancel
                 </button>
@@ -928,8 +913,8 @@ export default function PdfViewerModal({
                   type="button"
                   onClick={() => handleSaveFlashcard(true)}
                   disabled={!cardFront.trim() || !cardBack.trim()}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 disabled:opacity-40 transition-colors"
-                  title="Save this card and keep dialog open to add another"
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-200 disabled:opacity-40 transition-colors shadow-xs"
+                  title="Save card and keep dialog open to add another"
                 >
                   Save & Add Another
                 </button>
@@ -937,7 +922,7 @@ export default function PdfViewerModal({
                   type="button"
                   onClick={() => handleSaveFlashcard(false)}
                   disabled={!cardFront.trim() || !cardBack.trim()}
-                  className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md disabled:opacity-40 transition-colors"
+                  className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-stone-900 hover:bg-stone-800 text-white shadow-xs disabled:opacity-40 transition-colors"
                 >
                   Save Flashcard
                 </button>

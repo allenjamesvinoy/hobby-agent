@@ -26,17 +26,17 @@ export default function Sidebar({
   const readingCount = papers.filter((p) => p.status === 'Reading').length;
 
   return (
-    <aside className="w-64 bg-slate-950/80 border-r border-slate-800 flex flex-col justify-between p-4 select-none pt-8">
+    <aside className="w-64 bg-[#f7f6f3] border-r border-stone-200/80 flex flex-col justify-between p-4 select-none pt-7">
       <div className="space-y-6">
         {/* Header App Title */}
         <div className="flex items-center space-x-3 px-2">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-            <BookMarked className="w-5 h-5 text-white" />
+          <div className="w-8 h-8 rounded-lg bg-stone-900 flex items-center justify-center shadow-sm text-white font-serif font-bold text-base">
+            <BookMarked className="w-4 h-4 text-stone-100" />
           </div>
           <div>
-            <h1 className="font-bold text-slate-100 text-sm tracking-wide">Paper Companion</h1>
-            <p className="text-[10px] text-emerald-400 flex items-center gap-1 font-mono">
-              <HardDrive className="w-3 h-3" /> Local-First Storage
+            <h1 className="font-bold text-stone-800 text-sm tracking-tight">Paper Companion</h1>
+            <p className="text-[10px] text-stone-500 flex items-center gap-1 font-mono mt-0.5">
+              <HardDrive className="w-3 h-3 text-emerald-600" /> Local-First
             </p>
           </div>
         </div>
@@ -44,14 +44,14 @@ export default function Sidebar({
         {/* Add Paper Button */}
         <button
           onClick={onNewPaper}
-          className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-4 rounded-xl text-sm transition-all shadow-md shadow-indigo-600/20 active:scale-95"
+          className="w-full flex items-center justify-center gap-2 bg-white hover:bg-stone-50 text-stone-800 font-medium py-2 px-4 rounded-lg text-xs border border-stone-200/90 shadow-sm transition-all hover:border-stone-300 active:scale-[0.98]"
         >
-          <Plus className="w-4 h-4" /> Add Paper
+          <Plus className="w-4 h-4 text-stone-600" /> Add Paper
         </button>
 
         {/* Navigation Sections */}
         <div className="space-y-1">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-3 mb-2">
+          <p className="text-[11px] font-semibold text-stone-400 uppercase tracking-wider px-3 mb-1.5 font-mono">
             Library
           </p>
           <button
@@ -59,16 +59,16 @@ export default function Sidebar({
               setActiveTab('papers');
               setFilterStatus('All');
             }}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors ${' '}{
+            className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
               activeTab === 'papers' && filterStatus === 'All'
-                ? 'bg-slate-800 text-indigo-400'
-                : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
+                ? 'bg-stone-200/70 text-stone-900 font-semibold'
+                : 'text-stone-600 hover:bg-stone-200/40 hover:text-stone-900'
             }`}
           >
             <span className="flex items-center gap-2.5">
-              <BookOpen className="w-4 h-4" /> All Papers
+              <BookOpen className="w-3.5 h-3.5 text-stone-500" /> All Papers
             </span>
-            <span className="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full font-mono">
+            <span className="text-[10px] bg-stone-200/60 text-stone-600 px-2 py-0.5 rounded-full font-mono font-medium">
               {totalPapers}
             </span>
           </button>
@@ -78,16 +78,16 @@ export default function Sidebar({
               setActiveTab('papers');
               setFilterStatus('Reading');
             }}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors ${' '}{
+            className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
               activeTab === 'papers' && filterStatus === 'Reading'
-                ? 'bg-slate-800 text-indigo-400'
-                : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
+                ? 'bg-stone-200/70 text-stone-900 font-semibold'
+                : 'text-stone-600 hover:bg-stone-200/40 hover:text-stone-900'
             }`}
           >
             <span className="flex items-center gap-2.5">
-              <Clock className="w-4 h-4 text-amber-400" /> Currently Reading
+              <Clock className="w-3.5 h-3.5 text-amber-600" /> Reading
             </span>
-            <span className="text-xs bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full font-mono">
+            <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-mono font-medium">
               {readingCount}
             </span>
           </button>
@@ -97,16 +97,16 @@ export default function Sidebar({
               setActiveTab('papers');
               setFilterStatus('Completed');
             }}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors ${' '}{
+            className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
               activeTab === 'papers' && filterStatus === 'Completed'
-                ? 'bg-slate-800 text-indigo-400'
-                : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
+                ? 'bg-stone-200/70 text-stone-900 font-semibold'
+                : 'text-stone-600 hover:bg-stone-200/40 hover:text-stone-900'
             }`}
           >
             <span className="flex items-center gap-2.5">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Completed
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Completed
             </span>
-            <span className="text-xs bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full font-mono">
+            <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-mono font-medium">
               {completedCount}
             </span>
           </button>
@@ -114,21 +114,21 @@ export default function Sidebar({
 
         {/* Study Section */}
         <div className="space-y-1">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-3 mb-2">
+          <p className="text-[11px] font-semibold text-stone-400 uppercase tracking-wider px-3 mb-1.5 font-mono">
             Active Recall
           </p>
           <button
             onClick={() => setActiveTab('flashcards')}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors ${' '}{
+            className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
               activeTab === 'flashcards'
-                ? 'bg-slate-800 text-indigo-400'
-                : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
+                ? 'bg-stone-200/70 text-stone-900 font-semibold'
+                : 'text-stone-600 hover:bg-stone-200/40 hover:text-stone-900'
             }`}
           >
             <span className="flex items-center gap-2.5">
-              <Brain className="w-4 h-4 text-purple-400" /> Flashcards Review
+              <Brain className="w-3.5 h-3.5 text-indigo-600" /> Flashcards
             </span>
-            <span className="text-xs bg-purple-500/10 text-purple-400 px-2 py-0.5 rounded-full font-mono">
+            <span className="text-[10px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full font-mono font-medium">
               {flashcards.length}
             </span>
           </button>
@@ -136,30 +136,30 @@ export default function Sidebar({
       </div>
 
       {/* Bottom Stats & Settings Widget */}
-      <div className="space-y-3">
-        <div className="bg-slate-900/90 rounded-xl p-3 border border-slate-800/80 space-y-2">
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-400">
-            <span className="flex items-center gap-2">
-              <BarChart2 className="w-3.5 h-3.5 text-indigo-400" /> Reading Progress
+      <div className="space-y-2">
+        <div className="bg-white rounded-xl p-3 border border-stone-200/80 shadow-sm space-y-2">
+          <div className="flex items-center justify-between text-xs font-semibold text-stone-700">
+            <span className="flex items-center gap-1.5 text-stone-600 text-[11px] font-mono uppercase tracking-wider">
+              <BarChart2 className="w-3.5 h-3.5 text-indigo-600" /> Reading
             </span>
             <button
               onClick={onOpenSettings}
-              className="p-1 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded transition-colors"
+              className="p-1 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded transition-colors"
               title="Reading Settings"
             >
               <Settings className="w-3.5 h-3.5" />
             </button>
           </div>
-          <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+          <div className="w-full bg-stone-100 rounded-full h-1.5 overflow-hidden border border-stone-200/60">
             <div
-              className="bg-gradient-to-r from-indigo-500 to-purple-500 h-full rounded-full transition-all duration-300"
+              className="bg-stone-800 h-full rounded-full transition-all duration-300"
               style={{
                 width: `${totalPapers > 0 ? (completedCount / totalPapers) * 100 : 0}%`
               }}
             />
           </div>
-          <p className="text-[11px] text-slate-500 text-right font-mono">
-            {completedCount} / {totalPapers} finished ({totalPapers > 0 ? Math.round((completedCount / totalPapers) * 100) : 0}%)
+          <p className="text-[10px] text-stone-500 text-right font-mono">
+            {completedCount} / {totalPapers} read ({totalPapers > 0 ? Math.round((completedCount / totalPapers) * 100) : 0}%)
           </p>
         </div>
       </div>
