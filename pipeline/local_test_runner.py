@@ -8,7 +8,7 @@ root_dir = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(root_dir))
 
 from pipeline.context_loader import ContextLoader
-from pipeline.run_agents import check_python_syntax
+from pipeline.run_agents import check_syntax
 
 def run_mock_simulation():
     print("🧪 Running Pipeline in MOCK Mode (Testing wiring without calling LLM)...")
@@ -27,7 +27,7 @@ def run_mock_simulation():
     }
 
     # 3. Test Syntax Checker
-    errors = check_python_syntax(mock_files)
+    errors = check_syntax(mock_files)
     assert not errors, f"Unexpected syntax error: {errors}"
     print("\n✅ Python AST Syntax Checker works perfectly!")
     print("✅ Context isolation successfully tested!")

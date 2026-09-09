@@ -3,6 +3,8 @@ name: Autonomous Multi-Agent Coder
 on:
   issues:
     types: [opened, labeled]
+  issue_comment:
+    types: [created]
   workflow_dispatch:
     inputs:
       idea_title:
@@ -21,8 +23,15 @@ permissions:
 
 jobs:
   build-and-review:
-    # Trigger if issue has the 'idea' label, or if manually dispatched
-    if: (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'idea')) || github.event_name == 'workflow_dispatch'
+    # Trigger on issue opened/labeled with 'idea', or issue comment on 'idea' issue (excluding bots), or manual dispatch
+    if: |
+      (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'idea')) ||
+      (github.event_name == 'issue_comment' &&
+       contains(github.event.issue.labels.*.name, 'idea') &&
+       github.event.comment.user.type != 'Bot' &&
+       !endsWith(github.event.comment.user.login, '[bot]') &&
+       github.event.issue.pull_request == null) ||
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     steps:
@@ -45,6 +54,8 @@ jobs:
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_BODY: ${{ github.event.issue.body }}
           ISSUE_NUM: ${{ github.event.issue.number }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENT_ID: ${{ github.event.comment.id }}
           INPUT_TITLE: ${{ github.event.inputs.idea_title }}
           INPUT_BODY: ${{ github.event.inputs.idea_body }}
           RUN_ID: ${{ github.run_id }}
@@ -53,19 +64,33 @@ jobs:
           import os
 
           event = os.environ.get("EVENT_NAME", "")
-          if event == "issues":
+          if event == "issue_comment":
+              issue_title = os.environ.get("ISSUE_TITLE", "")
+              issue_body = os.environ.get("ISSUE_BODY", "")
+              comment_body = os.environ.get("COMMENT_BODY", "")
+              comment_id = os.environ.get("COMMENT_ID", "0")
+              issue_num = os.environ.get("ISSUE_NUM", "0")
+
+              title = issue_title
+              body = f"Original Requirements:\n{issue_body}\n\n--- User Follow-up Comment / Feedback ---\n{comment_body}"
+              branch = f"idea-issue-{issue_num}-c{comment_id}"
+              pr_title = f"🤖 [Agent Follow-up PR] Fix for Issue #{issue_num}: {issue_title}"
+          elif event == "issues":
               title = os.environ.get("ISSUE_TITLE", "")
               body = os.environ.get("ISSUE_BODY", "")
               branch = f"idea-issue-{os.environ.get('ISSUE_NUM', '0')}"
+              pr_title = f"🤖 [Agent PR] {title}"
           else:
               title = os.environ.get("INPUT_TITLE", "")
               body = os.environ.get("INPUT_BODY", "")
               branch = f"idea-manual-{os.environ.get('RUN_ID', '0')}"
+              pr_title = f"🤖 [Agent PR] {title}"
 
           env_file = os.environ.get("GITHUB_ENV")
           if env_file:
               with open(env_file, "a", encoding="utf-8") as f:
                   f.write(f"BRANCH_NAME={branch}\n")
+                  f.write(f"PR_TITLE={pr_title}\n")
                   f.write("TITLE<<DELIM_TITLE\n" + title + "\nDELIM_TITLE\n")
                   f.write("BODY<<DELIM_BODY\n" + body + "\nDELIM_BODY\n")
           EOF_EXTRACT
@@ -85,18 +110,25 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: "feat: autonomous implementation for '${{ env.TITLE }}'"
           branch: ${{ env.BRANCH_NAME }}
-          title: "🤖 [Agent PR] ${{ env.TITLE }}"
+          title: ${{ env.PR_TITLE }}
           body-path: pr_summary.md
           labels: automated-pr, ready-for-review
 
       - name: Comment on Issue
-        if: github.event_name == 'issues'
+        if: github.event_name == 'issues' || github.event_name == 'issue_comment'
         uses: actions/github-script@v7
+        env:
+          BRANCH_NAME: ${{ env.BRANCH_NAME }}
         with:
           script: |
+            const isComment = context.eventName === 'issue_comment';
+            const body = isComment
+              ? `🚀 **Agents have processed your feedback!**\n\nThe requested adjustments have been generated, audited, and pushed to a new Pull Request for branch \`${process.env.BRANCH_NAME}\`.`
+              : `🚀 **Agents have completed your project!**\n\nThe code has been reviewed, formatted, and pushed to a new Pull Request for your review.`;
+
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `🚀 **Agents have completed your project!**\n\nThe code has been reviewed, formatted, and pushed to a new Pull Request for your review.`
+              body: body
             })
