@@ -8,15 +8,6 @@ An event-driven, autonomous software engineering platform that orchestrates mult
 
 The **Autonomous Software Engineering Incubator** translates natural-language requirements into production-ready pull requests with zero human intervention during code generation. Tasks dispatched via GitHub Issues or manual workflow triggers initiate a cloud-native **Generator-Critic (Maker-Checker)** multi-agent pipeline that scopes context, generates modular implementations in isolated vertical slices, runs deterministic AST validation, and opens a structured, audited Pull Request for human review.
 
-```mermaid
-flowchart LR
-    Issue["💡 GitHub Issue / Dispatch\n(Title & Requirements)"] --> Loader["🎯 Targeted Context Loader\n(AST & Scope Pruning)"]
-    Loader --> Coder["🤖 Coder Agent\n(Generative Synthesis)"]
-    Coder --> AST["🔬 Deterministic AST Validator\n(Compiler Syntax Diagnostics)"]
-    AST --> Reviewer["🧐 Reviewer Agent\n(Adversarial Audit & Self-Healing)"]
-    Reviewer --> PR["🚀 Automated Pull Request\n(Human-in-the-Loop Gating)"]
-```
-
 ---
 
 ## Key Architectural Pillars
