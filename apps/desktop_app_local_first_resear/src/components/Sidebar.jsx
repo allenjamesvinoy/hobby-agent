@@ -8,7 +8,8 @@ import {
   BookMarked,
   BarChart2,
   HardDrive,
-  Settings
+  Settings,
+  Minimize2
 } from 'lucide-react';
 
 export default function Sidebar({
@@ -19,14 +20,15 @@ export default function Sidebar({
   papers,
   flashcards,
   onNewPaper,
-  onOpenSettings
+  onOpenSettings,
+  onMinimize
 }) {
   const totalPapers = papers.length;
   const completedCount = papers.filter((p) => p.status === 'Completed').length;
   const readingCount = papers.filter((p) => p.status === 'Reading').length;
 
   return (
-    <aside className="w-64 bg-[#f7f6f3] border-r border-stone-200/80 flex flex-col justify-between p-4 select-none pt-7">
+    <aside className="w-64 bg-[#f7f6f3] border-r border-stone-200/80 flex flex-col justify-between p-4 select-none pt-8 drag-region">
       <div className="space-y-6">
         {/* Header App Title */}
         <div className="flex items-center space-x-3 px-2">
@@ -44,7 +46,7 @@ export default function Sidebar({
         {/* Add Paper Button */}
         <button
           onClick={onNewPaper}
-          className="w-full flex items-center justify-center gap-2 bg-white hover:bg-stone-50 text-stone-800 font-medium py-2 px-4 rounded-lg text-xs border border-stone-200/90 shadow-sm transition-all hover:border-stone-300 active:scale-[0.98]"
+          className="w-full flex items-center justify-center gap-2 bg-white hover:bg-stone-50 text-stone-800 font-medium py-2 px-4 rounded-lg text-xs border border-stone-200/90 shadow-sm transition-all hover:border-stone-300 active:scale-[0.98] no-drag"
         >
           <Plus className="w-4 h-4 text-stone-600" /> Add Paper
         </button>
@@ -59,7 +61,7 @@ export default function Sidebar({
               setActiveTab('papers');
               setFilterStatus('All');
             }}
-            className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+            className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-medium transition-colors no-drag ${
               activeTab === 'papers' && filterStatus === 'All'
                 ? 'bg-stone-200/70 text-stone-900 font-semibold'
                 : 'text-stone-600 hover:bg-stone-200/40 hover:text-stone-900'
@@ -78,7 +80,7 @@ export default function Sidebar({
               setActiveTab('papers');
               setFilterStatus('Reading');
             }}
-            className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+            className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-medium transition-colors no-drag ${
               activeTab === 'papers' && filterStatus === 'Reading'
                 ? 'bg-stone-200/70 text-stone-900 font-semibold'
                 : 'text-stone-600 hover:bg-stone-200/40 hover:text-stone-900'
@@ -97,7 +99,7 @@ export default function Sidebar({
               setActiveTab('papers');
               setFilterStatus('Completed');
             }}
-            className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+            className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-medium transition-colors no-drag ${
               activeTab === 'papers' && filterStatus === 'Completed'
                 ? 'bg-stone-200/70 text-stone-900 font-semibold'
                 : 'text-stone-600 hover:bg-stone-200/40 hover:text-stone-900'
@@ -119,7 +121,7 @@ export default function Sidebar({
           </p>
           <button
             onClick={() => setActiveTab('flashcards')}
-            className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+            className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-medium transition-colors no-drag ${
               activeTab === 'flashcards'
                 ? 'bg-stone-200/70 text-stone-900 font-semibold'
                 : 'text-stone-600 hover:bg-stone-200/40 hover:text-stone-900'
@@ -136,19 +138,28 @@ export default function Sidebar({
       </div>
 
       {/* Bottom Stats & Settings Widget */}
-      <div className="space-y-2">
+      <div className="space-y-2 no-drag">
         <div className="bg-white rounded-xl p-3 border border-stone-200/80 shadow-sm space-y-2">
           <div className="flex items-center justify-between text-xs font-semibold text-stone-700">
             <span className="flex items-center gap-1.5 text-stone-600 text-[11px] font-mono uppercase tracking-wider">
               <BarChart2 className="w-3.5 h-3.5 text-indigo-600" /> Reading
             </span>
-            <button
-              onClick={onOpenSettings}
-              className="p-1 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded transition-colors"
-              title="Reading Settings"
-            >
-              <Settings className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={onMinimize}
+                className="p-1 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded transition-colors"
+                title="Minimize Mode (Compact Widget)"
+              >
+                <Minimize2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={onOpenSettings}
+                className="p-1 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded transition-colors"
+                title="Reading Settings"
+              >
+                <Settings className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
           <div className="w-full bg-stone-100 rounded-full h-1.5 overflow-hidden border border-stone-200/60">
             <div
