@@ -82,10 +82,21 @@ def call_gemini_with_retry(
 
     raise last_exc
 
-def detect_project_kind(idea_title: str, idea_body: str) -> str:
-    """Classifies the project as 'web' (React/HTML/JS) or 'python_cli'."""
-    text = f"{idea_title} {idea_body}".lower()
-    web_keywords = ["react", "frontend", "web", "html", "css", "vue", "svelte", "ui", "dashboard", "browser"]
+def detect_project_kind(idea_title: str, idea_body: str, target: Optional[Tuple[str, Path]] = None) -> str:
+    """Classifies the project as 'web' (React/Electron/HTML/JS) or 'python_cli'."""
+    if target:
+        p_type, _ = target
+        if p_type == "app":
+            return "web"
+        elif p_type == "feature":
+            return "python_cli"
+
+    text = f"{idea_title or ''} {idea_body or ''}".lower()
+    web_keywords = [
+        "react", "frontend", "web", "html", "css", "vue", "svelte", 
+        "ui", "dashboard", "browser", "electron", "desktop", "apps/", 
+        "component", "modal", "window", "mac"
+    ]
     if any(k in text for k in web_keywords):
         return "web"
     return "python_cli"
@@ -246,6 +257,8 @@ def run_coder_agent(
     images: Optional[List[Tuple[bytes, str]]] = None
 ) -> Dict[str, str]:
     """Agent 1 (Coder): Generates code files tailored to the project kind, with optional visual input."""
+    idea_title = str(idea_title or "").strip()
+    idea_body = str(idea_body or "").strip()
     slug = slugify(idea_title) or "new_project"
     visual_note = f"\nUser attached {len(images)} image/screenshot reference(s). Inspect attached visual(s) carefully to match layout, colors, typography, or resolve the visual bug.\n" if images else ""
 
@@ -363,6 +376,8 @@ def run_reviewer_agent(
     images: Optional[List[Tuple[bytes, str]]] = None
 ) -> Tuple[Dict[str, str], str]:
     """Agent 2 (Reviewer): Audits code, fixes syntax/bugs, and writes a PR summary with visual context."""
+    idea_title = str(idea_title or "").strip()
+    idea_body = str(idea_body or "").strip()
     files_json = json.dumps(generated_files, indent=2)
     errors_note = f"\nSyntax Errors Detected:\n{json.dumps(syntax_errors, indent=2)}" if syntax_errors else "\nNo initial syntax errors."
 
@@ -414,7 +429,7 @@ def get_idea_details() -> Tuple[str, str]:
     env_title = os.environ.get("IDEA_TITLE")
     env_body = os.environ.get("IDEA_BODY")
     if env_title and env_body:
-        return env_title, env_body
+        return str(env_title).strip(), str(env_body).strip()
 
     # Priority 2: GITHUB_EVENT_PATH payload parsing
     event_path = os.environ.get("GITHUB_EVENT_PATH")
@@ -423,10 +438,10 @@ def get_idea_details() -> Tuple[str, str]:
             with open(event_path, "r", encoding="utf-8") as f:
                 event = json.load(f)
             if "issue" in event:
-                title = event["issue"].get("title", "")
-                body = event["issue"].get("body", "")
+                title = str(event["issue"].get("title") or "").strip()
+                body = str(event["issue"].get("body") or "").strip()
                 if "comment" in event:
-                    comment_body = event["comment"].get("body", "").strip()
+                    comment_body = str(event["comment"].get("body") or "").strip()
                     if comment_body:
                         body = (
                             f"Original Requirements:\n{body}\n\n"
@@ -434,20 +449,32 @@ def get_idea_details() -> Tuple[str, str]:
                         )
                 return title, body
             elif "inputs" in event:
-                return event["inputs"].get("idea_title", ""), event["inputs"].get("idea_body", "")
+                title = str(event["inputs"].get("idea_title") or "").strip()
+                body = str(event["inputs"].get("idea_body") or "").strip()
+                return title, body
         except Exception:
             pass
 
-    return env_title or "CLI Habit Tracker", env_body or "A command-line habit tracker with streak counting and JSON storage."
+    return str(env_title or "CLI Habit Tracker").strip(), str(env_body or "A command-line habit tracker with streak counting and JSON storage.").strip()
 
 def main():
     root = Path(__file__).resolve().parent.parent
     loader = ContextLoader(root)
 
     idea_title, idea_body = get_idea_details()
+    idea_title = str(idea_title or "").strip()
+    idea_body = str(idea_body or "").strip()
 
-    project_kind = detect_project_kind(idea_title, idea_body)
+    target = loader.detect_target_project(f"{idea_title} {idea_body}")
+    target_dir = target[1] if target else None
+
+    project_kind = detect_project_kind(idea_title, idea_body, target=target)
     print(f"🔍 Detected project type: '{project_kind.upper()}'")
+
+    if target_dir:
+        print(f"🎯 Target project identified: '{target_dir.name}' (Incremental modification mode)")
+    else:
+        print("✨ Brand new project requested (Full scaffolding mode)")
 
     print(f"📦 Loading scoped context for: '{idea_title}'...")
     context = loader.assemble_targeted_context(idea_title, idea_body)
@@ -467,14 +494,6 @@ def main():
                 print(f"  ✓ Downloaded {len(img_data)} bytes ({mime})")
 
     client = get_gemini_client()
-
-    target = loader.detect_target_project(f"{idea_title} {idea_body}")
-    target_dir = target[1] if target else None
-
-    if target_dir:
-        print(f"🎯 Target project identified: '{target_dir.name}' (Incremental modification mode)")
-    else:
-        print("✨ Brand new project requested (Full scaffolding mode)")
 
     print(f"🤖 [Coder Agent] Generating {project_kind} project files (images: {len(images)})...")
     files = run_coder_agent(client, idea_title, idea_body, context, project_kind, target_dir=target_dir, images=images)
