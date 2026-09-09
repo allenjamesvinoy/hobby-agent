@@ -5,9 +5,11 @@ import PaperDetail, { DEFAULT_ACADEMIC_SECTIONS } from './components/PaperDetail
 import FlashcardReview from './components/FlashcardReview';
 import PaperFormModal from './components/PaperFormModal';
 import PdfViewerModal from './components/PdfViewerModal';
+import SettingsModal from './components/SettingsModal';
 
 const STORAGE_KEY_PAPERS = 'paper_companion_papers_v1';
 const STORAGE_KEY_FLASHCARDS = 'paper_companion_flashcards_v1';
+const STORAGE_KEY_SETTINGS = 'paper_companion_settings_v1';
 
 const createDefaultSections = () =>
   DEFAULT_ACADEMIC_SECTIONS.map((name, idx) => ({
@@ -45,10 +47,20 @@ export default function App() {
     }
   });
 
+  const [settings, setSettings] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_SETTINGS);
+      return saved ? JSON.parse(saved) : { dwellThresholdMinutes: 3, autoMarkDwell: true };
+    } catch {
+      return { dwellThresholdMinutes: 3, autoMarkDwell: true };
+    }
+  });
+
   const [activeTab, setActiveTab] = useState('library');
   const [filterStatus, setFilterStatus] = useState('All');
   const [selectedPaperId, setSelectedPaperId] = useState(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [pdfViewing, setPdfViewing] = useState({
     isOpen: false,
     pdfData: null,
@@ -74,6 +86,14 @@ export default function App() {
       console.warn('Storage quota exceeded or error saving flashcards:', e);
     }
   }, [flashcards]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
+    } catch (e) {
+      console.warn('Storage quota exceeded or error saving settings:', e);
+    }
+  }, [settings]);
 
   const handleSavePaper = (paperData) => {
     const newPaper = {
@@ -149,7 +169,7 @@ export default function App() {
     }
 
     if (pdfData) {
-      setPdfViewing({
+      setPdfViewing({ 
         isOpen: true,
         pdfData,
         title,
@@ -165,7 +185,7 @@ export default function App() {
   const handlePdfPageChange = (newPage) => {
     if (pdfViewing.paperId) {
       handleUpdatePaper(pdfViewing.paperId, { currentPage: newPage });
-    }
+    } 
     setPdfViewing((prev) => ({ ...prev, currentPage: newPage }));
   };
 
@@ -175,7 +195,7 @@ export default function App() {
     : flashcards;
 
   return (
-    <div className="flex h-screen w-screen bg-slate-900 text-slate-100 overflow-hidden font-sans">
+    <div className="flex h-screen w-screen bg-[#fbfbfa] text-stone-800 overflow-hidden font-sans">
       <Sidebar
         activeTab={activeTab}
         setActiveTab={(tab) => {
@@ -187,9 +207,10 @@ export default function App() {
         papers={papers}
         flashcards={flashcards}
         onNewPaper={() => setIsFormOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
-      <main className="flex-1 flex flex-col min-w-0 bg-slate-900 overflow-hidden">
+      <main className="flex-1 flex flex-col min-w-0 bg-[#fbfbfa] overflow-hidden">
         {activeTab === 'library' || activeTab === 'papers' ? (
           selectedPaper ? (
             <PaperDetail
@@ -236,6 +257,8 @@ export default function App() {
         onUpdatePaper={(updates) => pdfViewing.paperId && handleUpdatePaper(pdfViewing.paperId, updates)}
         onAddFlashcard={handleAddFlashcard}
         flashcards={flashcards}
+        settings={settings}
+        onOpenSettings={() => setIsSettingsOpen(true)}
         onClose={() =>
           setPdfViewing({
             isOpen: false,
@@ -246,6 +269,13 @@ export default function App() {
             totalPages: 1
           })
         }
+      />
+
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        settings={settings}
+        onSaveSettings={setSettings}
       />
     </div>
   );
