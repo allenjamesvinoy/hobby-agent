@@ -89,6 +89,7 @@ export default function PdfViewerModal({
   const isInitialScrollDone = useRef(false);
   const renderingRef = useRef({});
   const currentPageRef = useRef(currentPage);
+  const scaleRef = useRef(scale);
 
   const paperFlashcards = paper?.id
     ? flashcards.filter((f) => f.paperId === paper.id)
@@ -98,12 +99,125 @@ export default function PdfViewerModal({
     (s) => currentPage >= (s.startPage || 1) && currentPage <= (s.endPage || numPages)
   );
 
-  const handleZoom = (newScale) => {
-    const clamped = Math.max(0.6, Math.min(2.5, Number(newScale.toFixed(2))));
-    setScale(clamped);
+  useEffect(() => {
+    scaleRef.current = scale;
+  }, [scale]);
+
+  useEffect(() => {
     setRenderedPages({});
     renderingRef.current = {};
+  }, [scale]);
+
+  // Center zoom on the middle of the viewport
+  const handleZoom = (newScale) => {
+    const clamped = Math.max(0.6, Math.min(2.5, Number(newScale.toFixed(2))));
+    const container = scrollContainerRef.current;
+    if (container) {
+      const rect = container.getBoundingClientRect();
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+      const scrollLeft = container.scrollLeft;
+      const scrollTop = container.scrollTop;
+      const contentX = scrollLeft + centerX;
+      const contentY = scrollTop + centerY;
+
+      setScale((prev) => {
+        if (clamped !== prev) {
+          const ratio = clamped / prev;
+          requestAnimationFrame(() => {
+            container.scrollLeft = contentX * ratio - centerX;
+            container.scrollTop = contentY * ratio - centerY;
+          });
+        }
+        return clamped;
+      });
+    } else {
+      setScale(clamped);
+    }
   };
+
+  // Handle touchpad pinch-to-zoom & Ctrl+wheel zoom with mouse-centering
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container || !isOpen) return;
+
+    const handleWheel = (e) => {
+      if (e.ctrlKey) {
+        e.preventDefault();
+        
+        // Get mouse position relative to the container
+        const rect = container.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        
+        // Get scroll position before zoom
+        const scrollLeft = container.scrollLeft;
+        const scrollTop = container.scrollTop;
+        
+        // Calculate point in content coordinates
+        const contentX = scrollLeft + mouseX;
+        const contentY = scrollTop + mouseY;
+        
+        const zoomDelta = -e.deltaY * 0.005;
+        const zoomFactor = 1 + Math.max(-0.2, Math.min(0.2, zoomDelta));
+        
+        setScale((prev) => {
+          const nextScale = Math.max(0.6, Math.min(2.5, Number((prev * zoomFactor).toFixed(2))));
+          if (nextScale !== prev) {
+            const ratio = nextScale / prev;
+            requestAnimationFrame(() => {
+              container.scrollLeft = contentX * ratio - mouseX;
+              container.scrollTop = contentY * ratio - mouseY;
+            });
+          }
+          return nextScale;
+        });
+      }
+    };
+
+    let gestureInitialScale = 1;
+    const handleGestureStart = (e) => {
+      e.preventDefault();
+      gestureInitialScale = scaleRef.current;
+    };
+
+    const handleGestureChange = (e) => {
+      e.preventDefault();
+      if (e.scale) {
+        const nextScale = Math.max(0.6, Math.min(2.5, Number((gestureInitialScale * e.scale).toFixed(2))));
+        
+        // Center of viewport zoom for gesture events
+        const rect = container.getBoundingClientRect();
+        const centerX = rect.width / 2;
+        const centerY = rect.height / 2;
+        const scrollLeft = container.scrollLeft;
+        const scrollTop = container.scrollTop;
+        const contentX = scrollLeft + centerX;
+        const contentY = scrollTop + centerY;
+        
+        setScale((prev) => {
+          if (nextScale !== prev) {
+            const ratio = nextScale / prev;
+            requestAnimationFrame(() => {
+              container.scrollLeft = contentX * ratio - centerX;
+              container.scrollTop = contentY * ratio - centerY;
+            });
+          }
+          return nextScale;
+        });
+      }
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    container.addEventListener('gesturestart', handleGestureStart, { passive: false });
+    container.addEventListener('gesturechange', handleGestureChange, { passive: false });
+
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+      container.removeEventListener('gesturestart', handleGestureStart);
+      container.removeEventListener('gesturechange', handleGestureChange);
+    };
+  }, [isOpen]);
 
   const handleOpenCardModal = () => {
     const selectedText = window.getSelection()?.toString()?.trim() || '';
