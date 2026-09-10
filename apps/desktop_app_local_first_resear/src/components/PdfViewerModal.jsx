@@ -14,12 +14,15 @@ import {
   Maximize2,
   Brain,
   Plus,
-  Check
+  Check,
+  Copy,
+  BookOpen,
+  ArrowLeft,
+  Bookmark
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import Tesseract from 'tesseract.js';
 
-// Configure PDF.js Worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 function dataUrlToUint8Array(dataUrl) {
@@ -75,6 +78,19 @@ export default function PdfViewerModal({
   const [scale, setScale] = useState(1.25);
   const [pageDimensions, setPageDimensions] = useState({});
 
+  // Navigation History state for link jumps
+  const [returnPage, setReturnPage] = useState(null);
+
+  // Text selection & floating toolbar state
+  const [selectionToolbar, setSelectionToolbar] = useState({
+    visible: false,
+    x: 0,
+    y: 0,
+    text: '',
+    sourcePage: 1
+  });
+  const [copySuccess, setCopySuccess] = useState(false);
+
   // Flashcard Creation States
   const [isCardModalOpen, setIsCardModalOpen] = useState(false);
   const [cardFront, setCardFront] = useState('');
@@ -83,7 +99,10 @@ export default function PdfViewerModal({
   const [cardSavedFeedback, setCardSavedFeedback] = useState(false);
   
   const scrollContainerRef = useRef(null);
+  const selectionToolbarRef = useRef(null);
   const canvasRefs = useRef({});
+  const textLayerRefs = useRef({});
+  const annotationLayerRefs = useRef({});
   const renderTasksRef = useRef({});
   const pageObserverRef = useRef(null);
   const isInitialScrollDone = useRef(false);
@@ -99,6 +118,10 @@ export default function PdfViewerModal({
     (s) => currentPage >= (s.startPage || 1) && currentPage <= (s.endPage || numPages)
   );
 
+  const referencesSection = sections.find((s) =>
+    /references|bibliography/i.test(s.name)
+  );
+
   useEffect(() => {
     scaleRef.current = scale;
   }, [scale]);
@@ -108,7 +131,6 @@ export default function PdfViewerModal({
     renderingRef.current = {};
   }, [scale]);
 
-  // Center zoom on the middle of the viewport
   const handleZoom = (newScale) => {
     const clamped = Math.max(0.6, Math.min(2.5, Number(newScale.toFixed(2))));
     const container = scrollContainerRef.current;
@@ -136,7 +158,6 @@ export default function PdfViewerModal({
     }
   };
 
-  // Handle touchpad pinch-to-zoom & Ctrl+wheel zoom with mouse-centering
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container || !isOpen) return;
@@ -144,17 +165,11 @@ export default function PdfViewerModal({
     const handleWheel = (e) => {
       if (e.ctrlKey) {
         e.preventDefault();
-        
-        // Get mouse position relative to the container
         const rect = container.getBoundingClientRect();
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top;
-        
-        // Get scroll position before zoom
         const scrollLeft = container.scrollLeft;
         const scrollTop = container.scrollTop;
-        
-        // Calculate point in content coordinates
         const contentX = scrollLeft + mouseX;
         const contentY = scrollTop + mouseY;
         
@@ -185,8 +200,6 @@ export default function PdfViewerModal({
       e.preventDefault();
       if (e.scale) {
         const nextScale = Math.max(0.6, Math.min(2.5, Number((gestureInitialScale * e.scale).toFixed(2))));
-        
-        // Center of viewport zoom for gesture events
         const rect = container.getBoundingClientRect();
         const centerX = rect.width / 2;
         const centerY = rect.height / 2;
@@ -219,10 +232,95 @@ export default function PdfViewerModal({
     };
   }, [isOpen]);
 
+  // Selection tracking for floating Copy / Flashcard popup
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleSelectionCheck = (e) => {
+      if (e && e.target && selectionToolbarRef.current && selectionToolbarRef.current.contains(e.target)) {
+        return;
+      }
+
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed) {
+        setSelectionToolbar((prev) => (prev.visible ? { ...prev, visible: false } : prev));
+        return;
+      }
+
+      const text = selection.toString().trim();
+      if (!text) {
+        setSelectionToolbar((prev) => (prev.visible ? { ...prev, visible: false } : prev));
+        return;
+      }
+
+      const range = selection.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      const container = scrollContainerRef.current;
+      if (!container) return;
+
+      let srcPage = currentPage;
+      let node = range.commonAncestorContainer;
+      if (node && node.nodeType === Node.TEXT_NODE) node = node.parentElement;
+      const pageEl = node?.closest('[data-page-number]');
+      if (pageEl) {
+        srcPage = Number(pageEl.getAttribute('data-page-number')) || currentPage;
+      }
+
+      const popupX = Math.max(20, Math.min(window.innerWidth - 280, rect.left + rect.width / 2 - 110));
+      const popupY = rect.top > 90 ? rect.top - 48 : rect.bottom + 10;
+
+      setSelectionToolbar({
+        visible: true,
+        x: popupX,
+        y: popupY,
+        text,
+        sourcePage: srcPage
+      });
+    };
+
+    document.addEventListener('mouseup', handleSelectionCheck);
+    return () => document.removeEventListener('mouseup', handleSelectionCheck);
+  }, [isOpen, currentPage]);
+
+  const handleCopySelectedText = async () => {
+    if (selectionToolbar.text) {
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(selectionToolbar.text);
+        } else {
+          const textArea = document.createElement('textarea');
+          textArea.value = selectionToolbar.text;
+          document.body.appendChild(textArea);
+          textArea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textArea);
+        }
+        setCopySuccess(true);
+        setTimeout(() => setCopySuccess(false), 2000);
+      } catch (err) {
+        console.error('Failed copying text:', err);
+      }
+    }
+  };
+
+  const handleCreateCardFromSelection = () => {
+    const text = selectionToolbar.text;
+    if (!text) return;
+    if (text.length <= 100) {
+      setCardFront(text);
+      setCardBack('');
+    } else {
+      setCardFront('');
+      setCardBack(text);
+    }
+    setCardSourcePage(selectionToolbar.sourcePage || currentPage);
+    setIsCardModalOpen(true);
+    setSelectionToolbar((prev) => ({ ...prev, visible: false }));
+  };
+
   const handleOpenCardModal = () => {
     const selectedText = window.getSelection()?.toString()?.trim() || '';
     if (selectedText) {
-      if (selectedText.length <= 120 && !cardFront) {
+      if (selectedText.length <= 100 && !cardFront) {
         setCardFront(selectedText);
       } else if (!cardBack) {
         setCardBack(selectedText);
@@ -301,9 +399,7 @@ export default function PdfViewerModal({
       setRenderedPages({});
       renderingRef.current = {};
       Object.values(renderTasksRef.current).forEach((task) => {
-        try {
-          task?.cancel();
-        } catch (e) {}
+        try { task?.cancel(); } catch (e) {}
       });
       renderTasksRef.current = {};
       isInitialScrollDone.current = false;
@@ -339,7 +435,6 @@ export default function PdfViewerModal({
     );
 
     pageObserverRef.current = observer;
-
     const pageEls = container.querySelectorAll('[data-page-number]');
     pageEls.forEach((el) => observer.observe(el));
 
@@ -349,6 +444,15 @@ export default function PdfViewerModal({
     };
   }, [isOpen, pdfDoc, numPages]);
 
+  // Navigation helper storing return history
+  const jumpToPageWithHistory = (targetPageNum) => {
+    if (targetPageNum && targetPageNum !== currentPage) {
+      setReturnPage(currentPage);
+      scrollToPage(targetPageNum);
+    }
+  };
+
+  // Render canvas, text layer, and annotation links
   useEffect(() => {
     if (!pdfDoc || !isOpen) return;
     let isCancelled = false;
@@ -358,9 +462,7 @@ export default function PdfViewerModal({
       renderingRef.current[pageNum] = true;
 
       if (renderTasksRef.current[pageNum]) {
-        try {
-          renderTasksRef.current[pageNum].cancel();
-        } catch (e) {}
+        try { renderTasksRef.current[pageNum].cancel(); } catch (e) {}
       }
 
       try {
@@ -394,6 +496,118 @@ export default function PdfViewerModal({
         await renderTask.promise;
         if (isCancelled) return;
 
+        // Render Text Layer for Text Selection & Copying
+        const textLayerDiv = textLayerRefs.current[pageNum];
+        if (textLayerDiv) {
+          textLayerDiv.innerHTML = '';
+          try {
+            const textContent = await page.getTextContent();
+            if (isCancelled) return;
+
+            if (typeof pdfjsLib.renderTextLayer === 'function') {
+              const textTask = pdfjsLib.renderTextLayer({
+                textContentSource: textContent,
+                container: textLayerDiv,
+                viewport: viewport,
+                textDivs: []
+              });
+              if (textTask && textTask.promise) {
+                await textTask.promise;
+              }
+            } else if (pdfjsLib.TextLayer) {
+              const textLayer = new pdfjsLib.TextLayer({
+                textContentSource: textContent,
+                container: textLayerDiv,
+                viewport: viewport
+              });
+              await textLayer.render();
+            } else {
+              throw new Error('No native renderTextLayer function');
+            }
+          } catch (err) {
+            // Fallback custom text placement
+            try {
+              const textContent = await page.getTextContent();
+              if (isCancelled) return;
+              textLayerDiv.innerHTML = '';
+              textContent.items.forEach((item) => {
+                if (!item.str) return;
+                const transform = item.transform;
+                const tx = pdfjsLib.Util ? pdfjsLib.Util.transform(viewport.transform, transform) : transform;
+                const fontHeight = Math.sqrt(tx[2] * tx[2] + tx[3] * tx[3]);
+                const span = document.createElement('span');
+                span.textContent = item.str;
+                span.style.left = `${tx[4]}px`;
+                span.style.top = `${tx[5] - fontHeight}px`;
+                span.style.fontSize = `${fontHeight}px`;
+                span.style.position = 'absolute';
+                span.style.transformOrigin = '0% 0%';
+                span.style.whiteSpace = 'pre';
+                span.style.color = 'transparent';
+                span.style.cursor = 'text';
+                textLayerDiv.appendChild(span);
+              });
+            } catch (e) {
+              console.warn(`Text layer rendering failed for page ${pageNum}:`, e);
+            }
+          }
+        }
+
+        // Render Annotation Layer for Reference & Internal PDF links
+        const annotLayerDiv = annotationLayerRefs.current[pageNum];
+        if (annotLayerDiv) {
+          annotLayerDiv.innerHTML = '';
+          try {
+            const annotations = await page.getAnnotations();
+            if (isCancelled) return;
+            for (const annot of annotations) {
+              if (annot.subtype === 'Link' && annot.rect) {
+                const vRect = viewport.convertToViewportRectangle(annot.rect);
+                const left = Math.min(vRect[0], vRect[2]);
+                const top = Math.min(vRect[1], vRect[3]);
+                const width = Math.abs(vRect[0] - vRect[2]);
+                const height = Math.abs(vRect[1] - vRect[3]);
+
+                const link = document.createElement('a');
+                link.className = 'linkAnnotation';
+                link.style.left = `${left}px`;
+                link.style.top = `${top}px`;
+                link.style.width = `${width}px`;
+                link.style.height = `${height}px`;
+
+                if (annot.url) {
+                  link.href = annot.url;
+                  link.target = '_blank';
+                  link.rel = 'noopener noreferrer';
+                  link.title = `External Link: ${annot.url}`;
+                } else if (annot.dest) {
+                  link.href = '#';
+                  link.title = 'Jump to reference or section';
+                  link.onclick = async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    try {
+                      let dest = annot.dest;
+                      if (typeof dest === 'string') {
+                        dest = await pdfDoc.getDestination(dest);
+                      }
+                      if (Array.isArray(dest) && dest[0]) {
+                        const pageIdx = await pdfDoc.getPageIndex(dest[0]);
+                        jumpToPageWithHistory(pageIdx + 1);
+                      }
+                    } catch (err) {
+                      console.warn('Failed resolving link destination:', err);
+                    }
+                  };
+                }
+                annotLayerDiv.appendChild(link);
+              }
+            }
+          } catch (err) {
+            console.warn(`Error rendering annotations on page ${pageNum}:`, err);
+          }
+        }
+
         setRenderedPages((prev) => ({ ...prev, [pageNum]: true }));
 
         const pageWrapper = canvas.parentElement;
@@ -416,9 +630,7 @@ export default function PdfViewerModal({
     return () => {
       isCancelled = true;
       Object.values(renderTasksRef.current).forEach((task) => {
-        try {
-          task?.cancel();
-        } catch (e) {}
+        try { task?.cancel(); } catch (e) {}
       });
       renderTasksRef.current = {};
     };
@@ -613,6 +825,18 @@ export default function PdfViewerModal({
             <span className="hidden sm:inline">Sidebar</span>
           </button>
 
+          {/* Jump to References section button */}
+          {referencesSection && (
+            <button
+              onClick={() => jumpToPageWithHistory(referencesSection.startPage)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-medium transition-colors border border-stone-200"
+              title={`Jump directly to References section (Page ${referencesSection.startPage})`}
+            >
+              <BookOpen className="w-3.5 h-3.5 text-stone-600" />
+              <span className="hidden sm:inline">References (p. {referencesSection.startPage})</span>
+            </button>
+          )}
+
           {/* Quick Create Flashcard Button */}
           <button
             onClick={handleOpenCardModal}
@@ -793,7 +1017,7 @@ export default function PdfViewerModal({
                         return (
                           <div
                             key={sec.id}
-                            onClick={() => scrollToPage(sec.startPage || 1)}
+                            onClick={() => jumpToPageWithHistory(sec.startPage || 1)}
                             className={`p-2.5 rounded-lg text-xs cursor-pointer transition-all border flex items-center justify-between ${
                               isActive
                                 ? 'bg-white border-stone-300 text-stone-900 font-medium shadow-xs'
@@ -856,7 +1080,7 @@ export default function PdfViewerModal({
                             </p>
                             {card.sourcePage && (
                               <button
-                                onClick={() => scrollToPage(card.sourcePage)}
+                                onClick={() => jumpToPageWithHistory(card.sourcePage)}
                                 className="px-1.5 py-0.5 rounded bg-stone-100 text-stone-600 border border-stone-200 text-[10px] font-mono hover:bg-stone-200 shrink-0"
                                 title={`Jump directly to Page ${card.sourcePage} in PDF`}
                               >
@@ -889,7 +1113,7 @@ export default function PdfViewerModal({
         {/* Continuous Canvas Scroll Viewer */}
         <div
           ref={scrollContainerRef}
-          className="flex-1 bg-stone-200/60 rounded-xl border border-stone-200/80 overflow-auto p-6 space-y-6 custom-scrollbar shadow-inner"
+          className="flex-1 bg-stone-200/60 rounded-xl border border-stone-200/80 overflow-auto p-6 space-y-6 custom-scrollbar shadow-inner relative"
         >
           {Array.from({ length: numPages }, (_, idx) => idx + 1).map((pNum) => (
             <div
@@ -907,6 +1131,14 @@ export default function PdfViewerModal({
                 ref={(el) => (canvasRefs.current[pNum] = el)}
                 className="block"
               />
+              <div
+                ref={(el) => (textLayerRefs.current[pNum] = el)}
+                className="textLayer"
+              />
+              <div
+                ref={(el) => (annotationLayerRefs.current[pNum] = el)}
+                className="annotationLayer"
+              />
               {!renderedPages[pNum] && (
                 <div className="absolute inset-0 bg-stone-50 flex items-center justify-center text-stone-500 text-xs font-mono space-x-2">
                   <Loader2 className="w-5 h-5 animate-spin text-stone-600" />
@@ -921,6 +1153,72 @@ export default function PdfViewerModal({
         </div>
       </div>
 
+      {/* Floating Selection Toolbar for Copying Text & Converting to Flashcard */}
+      {selectionToolbar.visible && (
+        <div
+          ref={selectionToolbarRef}
+          style={{
+            position: 'fixed',
+            left: `${selectionToolbar.x}px`,
+            top: `${selectionToolbar.y}px`,
+            zIndex: 70
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          className="bg-stone-900 text-white rounded-xl shadow-2xl p-1.5 flex items-center gap-1 border border-stone-700 animate-in fade-in zoom-in-95 duration-150 select-none"
+        >
+          <button
+            onClick={handleCopySelectedText}
+            className="flex items-center gap-1.5 px-3 py-1.5 hover:bg-stone-800 rounded-lg text-xs font-medium text-stone-200 transition-colors"
+            title="Copy selected text to clipboard"
+          >
+            {copySuccess ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-emerald-400">Copied!</span>
+              </>
+            )
+            : (
+              <>
+                <Copy className="w-3.5 h-3.5 text-stone-400" />
+                <span>Copy</span>
+              </>
+            )}
+          </button>
+          <div className="w-px h-4 bg-stone-700" />
+          <button
+            onClick={handleCreateCardFromSelection}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white shadow-xs transition-colors"
+            title="Convert selected text directly into a flashcard"
+          >
+            <Brain className="w-3.5 h-3.5" />
+            <span>+ Flashcard</span>
+          </button>
+        </div>
+      )}
+
+      {/* Return to Page banner when jumping via link */}
+      {returnPage && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 bg-stone-900 text-white px-4 py-2 rounded-xl shadow-2xl flex items-center gap-3 border border-stone-700 animate-in fade-in slide-in-from-bottom-3 text-xs font-medium">
+          <Bookmark className="w-4 h-4 text-amber-400" />
+          <span>Jumped to Page {currentPage}</span>
+          <button
+            onClick={() => {
+              scrollToPage(returnPage);
+              setReturnPage(null);
+            }}
+            className="px-2.5 py-1 bg-stone-800 hover:bg-stone-700 text-stone-200 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors border border-stone-600"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" /> Return to Page {returnPage}
+          </button>
+          <button
+            onClick={() => setReturnPage(null)}
+            className="p-1 hover:bg-stone-800 rounded text-stone-400 hover:text-white"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Quick-Create Flashcard Modal */}
       {isCardModalOpen && (
         <div className="fixed inset-0 z-[60] bg-black/30 backdrop-blur-xs flex items-center justify-center p-4 select-text">
@@ -933,7 +1231,6 @@ export default function PdfViewerModal({
               }
             }}
           >
-            {/* Modal Header */}
             <div className="flex items-start justify-between border-b border-stone-100 pb-3">
               <div>
                 <h4 className="text-sm font-bold text-stone-800 flex items-center gap-2">
@@ -961,7 +1258,6 @@ export default function PdfViewerModal({
               </button>
             </div>
 
-            {/* Card Form */}
             <div className="space-y-3">
               <div>
                 <label className="text-xs font-semibold text-stone-700 block mb-1">
@@ -990,7 +1286,6 @@ export default function PdfViewerModal({
                 />
               </div>
 
-              {/* Source Page Selector */}
               <div className="flex items-center justify-between pt-1 text-xs">
                 <span className="text-stone-500 font-mono text-[11px]">
                   Referenced Page in PDF:
@@ -1010,7 +1305,6 @@ export default function PdfViewerModal({
               </div>
             </div>
 
-            {/* Modal Actions */}
             <div className="flex items-center justify-between pt-3 border-t border-stone-100">
               <span className="text-[10px] text-stone-400 font-mono hidden sm:inline">
                 Press ⌘+Enter to save
