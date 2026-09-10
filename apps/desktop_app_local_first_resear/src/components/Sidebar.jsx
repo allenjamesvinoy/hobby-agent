@@ -26,10 +26,10 @@ export default function Sidebar({
   const readingCount = papers.filter((p) => p.status === 'Reading').length;
 
   return (
-    <aside className="w-64 bg-[#f7f6f3] border-r border-stone-200/80 flex flex-col justify-between p-4 select-none pt-7">
+    <aside className="w-64 bg-[#f7f6f3] border-r border-stone-200/80 flex flex-col justify-between p-4 select-none pt-9 drag-region">
       <div className="space-y-6">
         {/* Header App Title */}
-        <div className="flex items-center space-x-3 px-2">
+        <div className="flex items-center space-x-3 px-2 pt-2">
           <div className="w-8 h-8 rounded-lg bg-stone-900 flex items-center justify-center shadow-sm text-white font-serif font-bold text-base">
             <BookMarked className="w-4 h-4 text-stone-100" />
           </div>
@@ -44,7 +44,7 @@ export default function Sidebar({
         {/* Add Paper Button */}
         <button
           onClick={onNewPaper}
-          className="w-full flex items-center justify-center gap-2 bg-white hover:bg-stone-50 text-stone-800 font-medium py-2 px-4 rounded-lg text-xs border border-stone-200/90 shadow-sm transition-all hover:border-stone-300 active:scale-[0.98]"
+          className="no-drag w-full flex items-center justify-center gap-2 bg-white hover:bg-stone-50 text-stone-800 font-medium py-2 px-4 rounded-lg text-xs border border-stone-200/90 shadow-sm transition-all hover:border-stone-300 active:scale-[0.98]"
         >
           <Plus className="w-4 h-4 text-stone-600" /> Add Paper
         </button>
@@ -59,7 +59,7 @@ export default function Sidebar({
               setActiveTab('papers');
               setFilterStatus('All');
             }}
-            className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+            className={`no-drag w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
               activeTab === 'papers' && filterStatus === 'All'
                 ? 'bg-stone-200/70 text-stone-900 font-semibold'
                 : 'text-stone-600 hover:bg-stone-200/40 hover:text-stone-900'
@@ -78,7 +78,7 @@ export default function Sidebar({
               setActiveTab('papers');
               setFilterStatus('Reading');
             }}
-            className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+            className={`no-drag w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
               activeTab === 'papers' && filterStatus === 'Reading'
                 ? 'bg-stone-200/70 text-stone-900 font-semibold'
                 : 'text-stone-600 hover:bg-stone-200/40 hover:text-stone-900'
@@ -97,7 +97,7 @@ export default function Sidebar({
               setActiveTab('papers');
               setFilterStatus('Completed');
             }}
-            className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+            className={`no-drag w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
               activeTab === 'papers' && filterStatus === 'Completed'
                 ? 'bg-stone-200/70 text-stone-900 font-semibold'
                 : 'text-stone-600 hover:bg-stone-200/40 hover:text-stone-900'
@@ -119,7 +119,7 @@ export default function Sidebar({
           </p>
           <button
             onClick={() => setActiveTab('flashcards')}
-            className={`w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+            className={`no-drag w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
               activeTab === 'flashcards'
                 ? 'bg-stone-200/70 text-stone-900 font-semibold'
                 : 'text-stone-600 hover:bg-stone-200/40 hover:text-stone-900'
@@ -136,7 +136,7 @@ export default function Sidebar({
       </div>
 
       {/* Bottom Stats & Settings Widget */}
-      <div className="space-y-2">
+      <div className="space-y-2 no-drag">
         <div className="bg-white rounded-xl p-3 border border-stone-200/80 shadow-sm space-y-2">
           <div className="flex items-center justify-between text-xs font-semibold text-stone-700">
             <span className="flex items-center gap-1.5 text-stone-600 text-[11px] font-mono uppercase tracking-wider">
