@@ -142,15 +142,15 @@ export default function PaperDetail({
   return (
     <div className="flex-1 flex flex-col bg-[#fbfbfa] overflow-hidden">
       {/* Top Header */}
-      <div className="p-4 px-6 border-b border-stone-200 flex items-center justify-between bg-white/80 backdrop-blur-sm">
+      <div className="p-4 pt-8 px-6 border-b border-stone-200 flex items-center justify-between bg-white/80 backdrop-blur-sm drag-region">
         <button
           onClick={onBack}
-          className="flex items-center gap-2 text-xs font-medium text-stone-500 hover:text-stone-800 transition-colors px-2 py-1.5 rounded-md hover:bg-stone-100"
+          className="no-drag flex items-center gap-2 text-xs font-medium text-stone-500 hover:text-stone-800 transition-colors px-2 py-1.5 rounded-md hover:bg-stone-100"
         >
           <ArrowLeft className="w-4 h-4" /> Back to Papers
         </button>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 no-drag">
           {(paper.pdfUrl || paper.pdfFile) && (
             <button
               onClick={() => onOpenPdf(paper)}

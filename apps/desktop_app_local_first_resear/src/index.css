@@ -2,6 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
+.drag-region {
+  -webkit-app-region: drag;
+}
+
+.no-drag,
+.drag-region button,
+.drag-region input,
+.drag-region select,
+.drag-region textarea,
+.drag-region a,
+.drag-region label,
+.drag-region [role="button"],
+.drag-region [tabindex] {
+  -webkit-app-region: no-drag;
+}
+
 @keyframes cardFlip {
   from { transform: rotateY(0deg); }
   to { transform: rotateY(180deg); }
