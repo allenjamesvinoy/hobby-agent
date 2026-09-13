@@ -50,9 +50,11 @@ export default function App() {
   const [settings, setSettings] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_SETTINGS);
-      return saved ? JSON.parse(saved) : { dwellThresholdMinutes: 3, autoMarkDwell: true };
+      return saved
+        ? { dwellThresholdMinutes: 3, autoMarkDwell: true, defaultPaperView: 'pdf', ...JSON.parse(saved) }
+        : { dwellThresholdMinutes: 3, autoMarkDwell: true, defaultPaperView: 'pdf' };
     } catch {
-      return { dwellThresholdMinutes: 3, autoMarkDwell: true };
+      return { dwellThresholdMinutes: 3, autoMarkDwell: true, defaultPaperView: 'pdf' };
     }
   });
 
@@ -182,6 +184,16 @@ export default function App() {
     }
   };
 
+  const handleSelectPaper = (paper, preferredView) => {
+    if (!paper) return;
+    setSelectedPaperId(paper.id);
+    
+    const targetView = preferredView || settings?.defaultPaperView || 'pdf';
+    if (targetView === 'pdf' && (paper.pdfUrl || paper.pdfFile)) {
+      handleOpenPdf(paper);
+    }
+  };
+
   const handlePdfPageChange = (newPage) => {
     if (pdfViewing.paperId) {
       handleUpdatePaper(pdfViewing.paperId, { currentPage: newPage });
@@ -226,9 +238,10 @@ export default function App() {
             <PaperList
               papers={papers}
               flashcards={flashcards}
-              onSelectPaper={(p) => setSelectedPaperId(p.id)}
+              onSelectPaper={handleSelectPaper}
               onDeletePaper={handleDeletePaper}
               filterStatus={filterStatus}
+              settings={settings}
             />
           )
         ) : (
