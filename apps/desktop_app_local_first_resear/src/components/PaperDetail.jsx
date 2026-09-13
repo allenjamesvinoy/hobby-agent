@@ -11,8 +11,12 @@ import {
   CheckSquare,
   Square,
   PlusCircle,
-  Check
+  Check,
+  Play,
+  HelpCircle,
+  Sparkles
 } from 'lucide-react';
+import FlashcardModal from './FlashcardModal';
 
 export const DEFAULT_ACADEMIC_SECTIONS = [
   'Abstract',
@@ -33,12 +37,13 @@ const createDefaultSections = () =>
 
 export default function PaperDetail({
   paper,
-  flashcards,
+  flashcards = [],
   onBack,
   onUpdatePaper,
   onAddFlashcard,
   onDeleteFlashcard,
-  onOpenPdf
+  onOpenPdf,
+  onUpdateMastery
 }) {
   const [activeSubTab, setActiveSubTab] = useState('notes');
   const [notes, setNotes] = useState(paper.notes || '');
@@ -52,7 +57,10 @@ export default function PaperDetail({
   const [newCustomSection, setNewCustomSection] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // Synchronize state when selected paper ID changes
+  // Review Modal State
+  const [isStudyModalOpen, setIsStudyModalOpen] = useState(false);
+  const [studyCardIndex, setStudyCardIndex] = useState(0);
+
   useEffect(() => {
     setNotes(paper.notes || '');
     setCurrentPage(paper.currentPage || 1);
@@ -64,16 +72,15 @@ export default function PaperDetail({
     );
   }, [paper.id]);
 
-  // Keep page tracker in sync when updated from PDF viewer
   useEffect(() => {
     if (paper.currentPage !== undefined && paper.currentPage !== currentPage) {
       setCurrentPage(paper.currentPage);
     }
   }, [paper.currentPage]);
 
-  // Flashcard Form State
   const [newFront, setNewFront] = useState('');
   const [newBack, setNewBack] = useState('');
+  const [newSourcePage, setNewSourcePage] = useState('');
   const [showAddCard, setShowAddCard] = useState(false);
 
   const paperCards = flashcards.filter((c) => c.paperId === paper.id);
@@ -126,11 +133,13 @@ export default function PaperDetail({
       paperId: paper.id,
       front: newFront,
       back: newBack,
+      sourcePage: newSourcePage ? Number(newSourcePage) : currentPage,
       mastery: 'New',
       lastReviewed: null
     });
     setNewFront('');
     setNewBack('');
+    setNewSourcePage('');
     setShowAddCard(false);
   };
 
@@ -145,7 +154,7 @@ export default function PaperDetail({
       <div className="p-4 pt-8 px-6 border-b border-stone-200 flex items-center justify-between bg-white/80 backdrop-blur-sm drag-region">
         <button
           onClick={onBack}
-          className="no-drag flex items-center gap-2 text-xs font-medium text-stone-500 hover:text-stone-800 transition-colors px-2 py-1.5 rounded-md hover:bg-stone-100"
+          className="no-drag flex items-center gap-2 text-xs font-medium text-stone-500 hover:text-stone-800 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-stone-100"
         >
           <ArrowLeft className="w-4 h-4" /> Back to Papers
         </button>
@@ -300,7 +309,6 @@ export default function PaperDetail({
                 ))}
               </div>
 
-              {/* Inline Add Section */}
               <form
                 onSubmit={handleAddSection}
                 className="flex gap-1.5 pt-2 border-t border-stone-100"
@@ -343,9 +351,8 @@ export default function PaperDetail({
           </div>
         </div>
 
-        {/* Right Tabbed Section (Notes, Sections Checklist & Flashcards) */}
+        {/* Right Tabbed Section */}
         <div className="flex-1 flex flex-col bg-[#fbfbfa] overflow-hidden">
-          {/* Tabs header */}
           <div className="flex border-b border-stone-200 px-6 pt-2 bg-white/40">
             <button
               onClick={() => setActiveSubTab('notes')}
@@ -376,11 +383,10 @@ export default function PaperDetail({
                   : 'border-transparent text-stone-500 hover:text-stone-800'
               }`}
             >
-              <Brain className="w-3.5 h-3.5" /> Active Recall Cards ({paperCards.length})
+              <Brain className="w-3.5 h-3.5 text-indigo-600" /> Active Recall Cards ({paperCards.length})
             </button>
           </div>
 
-          {/* Tab Content */}
           <div className="flex-1 overflow-y-auto p-6">
             {activeSubTab === 'notes' ? (
               <div className="h-full flex flex-col space-y-2">
@@ -454,7 +460,7 @@ export default function PaperDetail({
                 <form onSubmit={handleAddSection} className="flex gap-2 pt-2">
                   <input
                     type="text"
-                    placeholder="Add custom section name (e.g., Ablation Study, Appendix A)..."
+                    placeholder="Add custom section name..."
                     value={newCustomSection}
                     onChange={(e) => setNewCustomSection(e.target.value)}
                     className="flex-1 bg-white border border-stone-200 rounded-xl px-4 py-2 text-xs text-stone-800 focus:outline-none focus:border-stone-400 shadow-xs"
@@ -468,93 +474,143 @@ export default function PaperDetail({
                 </form>
               </div>
             ) : (
-              <div className="space-y-6">
+              <div className="space-y-6 max-w-4xl">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs text-stone-500">
-                    Create question and answer pairs to test your understanding.
-                  </p>
-                  <button
-                    onClick={() => setShowAddCard(!showAddCard)}
-                    className="flex items-center gap-1.5 text-xs bg-stone-900 hover:bg-stone-800 text-white font-medium px-3.5 py-1.5 rounded-lg transition-colors shadow-xs"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> {showAddCard ? 'Cancel' : 'New Flashcard'}
-                  </button>
+                  <div>
+                    <h2 className="text-xs font-bold text-stone-800 uppercase tracking-wider font-mono flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-600" /> Active Recall Flashcards
+                    </h2>
+                    <p className="text-xs text-stone-500 mt-0.5">
+                      Self-test memory retention for key equations, takeaways, or concepts.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {paperCards.length > 0 && (
+                      <button
+                        onClick={() => {
+                          setStudyCardIndex(0);
+                          setIsStudyModalOpen(true);
+                        }}
+                        className="flex items-center gap-1.5 text-xs bg-stone-900 hover:bg-stone-800 text-white font-medium px-3.5 py-2 rounded-xl transition-all shadow-xs active:scale-95"
+                      >
+                        <Play className="w-3.5 h-3.5 text-emerald-400 fill-current" /> Study Paper Deck ({paperCards.length})
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setShowAddCard(!showAddCard)}
+                      className="flex items-center gap-1.5 text-xs bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-200 font-medium px-3 py-2 rounded-xl transition-colors shadow-xs"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> {showAddCard ? 'Cancel' : 'New Card'}
+                    </button>
+                  </div>
                 </div>
 
-                {/* Create Flashcard Form */}
                 {showAddCard && (
                   <form
                     onSubmit={handleCreateCard}
-                    className="bg-white border border-stone-200 rounded-xl p-5 space-y-4 shadow-sm text-xs"
+                    className="bg-white border border-stone-200/90 rounded-2xl p-6 space-y-4 shadow-sm text-xs animate-in fade-in duration-150"
                   >
                     <h3 className="text-xs font-bold text-stone-800 uppercase tracking-wider font-mono">
-                      New Flashcard
+                      Create Flashcard
                     </h3>
-                    <div>
-                      <label className="block text-xs font-semibold text-stone-700 mb-1">
-                        Front (Question or Concept)
-                      </label>
-                      <input
-                        type="text"
-                        value={newFront}
-                        onChange={(e) => setNewFront(e.target.value)}
-                        placeholder="e.g., What is Scaled Dot-Product Attention?"
-                        className="w-full bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 text-xs text-stone-800 focus:outline-none focus:border-stone-400"
-                        required
-                      />
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="sm:col-span-2">
+                        <label className="block text-[11px] font-semibold text-stone-600 mb-1 flex items-center gap-1">
+                          <HelpCircle className="w-3 h-3 text-indigo-500" /> Question / Prompt
+                        </label>
+                        <input
+                          type="text"
+                          value={newFront}
+                          onChange={(e) => setNewFront(e.target.value)}
+                          placeholder="e.g., What is Scaled Dot-Product Attention?"
+                          className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs text-stone-800 focus:outline-none focus:border-stone-400"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-stone-600 mb-1">
+                          Source Page
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          max={paper.totalPages || 999}
+                          value={newSourcePage}
+                          onChange={(e) => setNewSourcePage(e.target.value)}
+                          placeholder={`Page ${currentPage}`}
+                          className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs font-mono text-stone-800 focus:outline-none focus:border-stone-400"
+                        />
+                      </div>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-stone-700 mb-1">
-                        Back (Answer or Explanation)
+                      <label className="block text-[11px] font-semibold text-stone-600 mb-1 flex items-center gap-1">
+                        <Check className="w-3 h-3 text-emerald-500" /> Answer Key / Explanation
                       </label>
                       <textarea
                         rows={3}
                         value={newBack}
                         onChange={(e) => setNewBack(e.target.value)}
-                        placeholder="e.g., An attention mechanism where queries and keys are dot-producted and scaled..."
-                        className="w-full bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 text-xs text-stone-800 focus:outline-none focus:border-stone-400 resize-none"
+                        placeholder="e.g., An attention mechanism where queries and keys are dot-producted and scaled by sqrt(d_k)..."
+                        className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs text-stone-800 focus:outline-none focus:border-stone-400 resize-none font-sans leading-relaxed"
                         required
                       />
                     </div>
-                    <div className="flex justify-end gap-2">
+                    <div className="flex justify-end gap-2 pt-1">
                       <button
                         type="submit"
-                        className="bg-stone-900 hover:bg-stone-800 text-white text-xs font-medium px-4 py-1.5 rounded-lg transition-colors shadow-xs"
+                        className="bg-stone-900 hover:bg-stone-800 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors shadow-xs"
                       >
-                        Add Card
+                        Save Flashcard
                       </button>
                     </div>
                   </form>
                 )}
 
-                {/* Flashcards List */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {paperCards.length === 0 ? (
-                    <div className="col-span-full py-12 text-center text-stone-400 text-xs font-mono">
-                      No flashcards created for this paper yet.
+                    <div className="col-span-full py-12 text-center text-stone-400 text-xs font-mono border border-dashed border-stone-200 rounded-2xl p-6">
+                      No flashcards created for this paper yet. Click <span className="font-bold text-stone-600">"New Card"</span> to add active recall prompts.
                     </div>
                   ) : (
-                    paperCards.map((card) => (
+                    paperCards.map((card, idx) => (
                       <div
                         key={card.id}
-                        className="bg-white border border-stone-200/90 rounded-xl p-4 flex flex-col justify-between space-y-3 relative group shadow-xs hover:shadow-sm"
+                        onClick={() => {
+                          setStudyCardIndex(idx);
+                          setIsStudyModalOpen(true);
+                        }}
+                        className="bg-white border border-stone-200/90 rounded-2xl p-5 flex flex-col justify-between space-y-3 relative group shadow-xs hover:shadow-md hover:border-stone-400 transition-all cursor-pointer transform hover:-translate-y-0.5"
                       >
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-stone-100 text-stone-600 border border-stone-200/60">
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-stone-100 text-stone-600 border border-stone-200/80 uppercase font-semibold">
                               {card.masteryLevel || card.mastery || 'New'}
                             </span>
-                            <button
-                              onClick={() => onDeleteFlashcard(card.id)}
-                              className="text-stone-400 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity p-1"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            <div className="flex items-center gap-2">
+                              {card.sourcePage && (
+                                <span className="text-[10px] text-stone-400 font-mono">
+                                  p. {card.sourcePage}
+                                </span>
+                              )}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onDeleteFlashcard(card.id);
+                                }}
+                                className="text-stone-400 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md hover:bg-stone-100"
+                                title="Delete flashcard"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </div>
-                          <p className="text-xs font-semibold text-stone-900">Q: {card.front}</p>
-                          <p className="text-xs text-stone-600 border-t border-stone-100 pt-2">
-                            A: {card.back}
+                          <p className="text-xs font-bold text-stone-800 leading-snug line-clamp-2">
+                            {card.front}
                           </p>
+                        </div>
+                        <div className="pt-2 border-t border-stone-100 flex items-center justify-between text-[11px] text-stone-400 font-mono">
+                          <span className="text-stone-400 group-hover:text-stone-600 transition-colors">Interactive Review</span>
+                          <span className="text-indigo-600 font-semibold group-hover:underline">Review Modal &rarr;</span>
                         </div>
                       </div>
                     ))
@@ -565,6 +621,15 @@ export default function PaperDetail({
           </div>
         </div>
       </div>
+
+      <FlashcardModal
+        isOpen={isStudyModalOpen}
+        onClose={() => setIsStudyModalOpen(false)}
+        flashcards={paperCards}
+        initialIndex={studyCardIndex}
+        papers={[paper]}
+        onUpdateMastery={onUpdateMastery}
+      />
     </div>
   );
 }
