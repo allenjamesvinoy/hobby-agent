@@ -7,7 +7,8 @@ import {
   Trash2,
   CheckCircle,
   Clock,
-  Circle
+  Circle,
+  Eye
 } from 'lucide-react';
 
 export default function PaperList({
@@ -15,7 +16,8 @@ export default function PaperList({
   flashcards,
   onSelectPaper,
   onDeletePaper,
-  filterStatus
+  filterStatus,
+  settings
 }) {
   const [search, setSearch] = useState('');
 
@@ -85,6 +87,7 @@ export default function PaperList({
             const progress = paper.totalPages
               ? Math.min(100, Math.round((paper.currentPage / paper.totalPages) * 100))
               : 0;
+            const hasPdf = Boolean(paper.pdfUrl || paper.pdfFile);
 
             return (
               <div
@@ -94,16 +97,46 @@ export default function PaperList({
               >
                 <div>
                   <div className="flex items-start justify-between gap-2 mb-2">
-                    {getStatusBadge(paper.status)}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (confirm(`Remove "${paper.title}"?`)) onDeletePaper(paper.id);
-                      }}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-stone-400 hover:text-rose-600 rounded-md hover:bg-stone-100"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {getStatusBadge(paper.status)}
+                      {hasPdf && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSelectPaper(paper, 'pdf');
+                          }}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-colors"
+                          title="Open PDF Viewer"
+                        >
+                          <Eye className="w-3 h-3 text-indigo-600" /> PDF Reader
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectPaper(paper, 'detail');
+                        }}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-stone-400 hover:text-stone-700 rounded-md hover:bg-stone-100"
+                        title="View Paper Details & Notes"
+                      >
+                        <BookOpen className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`Remove "${paper.title}"?`)) onDeletePaper(paper.id);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-stone-400 hover:text-rose-600 rounded-md hover:bg-stone-100"
+                        title="Delete Paper"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
 
                   <h2 className="font-semibold text-stone-800 text-base leading-snug group-hover:text-stone-900 transition-colors line-clamp-2">
