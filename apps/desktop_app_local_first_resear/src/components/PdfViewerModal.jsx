@@ -23,7 +23,7 @@ import {
 import * as pdfjsLib from 'pdfjs-dist';
 import Tesseract from 'tesseract.js';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '3.11.174'}/pdf.worker.min.js`;
 
 function dataUrlToUint8Array(dataUrl) {
   if (typeof dataUrl === 'string' && dataUrl.startsWith('data:')) {
@@ -246,6 +246,14 @@ export default function PdfViewerModal({
         return;
       }
 
+      const anchorNode = selection.anchorNode;
+      if (anchorNode) {
+        const el = anchorNode.nodeType === Node.ELEMENT_NODE ? anchorNode : anchorNode.parentElement;
+        if (el?.closest('input, textarea, [role="dialog"]')) {
+          return;
+        }
+      }
+
       const text = selection.toString().trim();
       if (!text) {
         setSelectionToolbar((prev) => (prev.visible ? { ...prev, visible: false } : prev));
@@ -265,8 +273,8 @@ export default function PdfViewerModal({
         srcPage = Number(pageEl.getAttribute('data-page-number')) || currentPage;
       }
 
-      const popupX = Math.max(20, Math.min(window.innerWidth - 280, rect.left + rect.width / 2 - 110));
-      const popupY = rect.top > 90 ? rect.top - 48 : rect.bottom + 10;
+      const popupX = Math.max(20, Math.min(window.innerWidth - 320, rect.left + rect.width / 2 - 140));
+      const popupY = rect.top > 90 ? rect.top - 52 : rect.bottom + 10;
 
       setSelectionToolbar({
         visible: true,
@@ -500,6 +508,10 @@ export default function PdfViewerModal({
         const textLayerDiv = textLayerRefs.current[pageNum];
         if (textLayerDiv) {
           textLayerDiv.innerHTML = '';
+          textLayerDiv.style.setProperty('--scale-factor', viewport.scale);
+          textLayerDiv.style.width = `${Math.floor(viewport.width)}px`;
+          textLayerDiv.style.height = `${Math.floor(viewport.height)}px`;
+
           try {
             const textContent = await page.getTextContent();
             if (isCancelled) return;
@@ -545,6 +557,8 @@ export default function PdfViewerModal({
                 span.style.whiteSpace = 'pre';
                 span.style.color = 'transparent';
                 span.style.cursor = 'text';
+                span.style.userSelect = 'text';
+                span.style.webkitUserSelect = 'text';
                 textLayerDiv.appendChild(span);
               });
             } catch (e) {
@@ -1164,11 +1178,14 @@ export default function PdfViewerModal({
             zIndex: 70
           }}
           onMouseDown={(e) => e.stopPropagation()}
-          className="bg-stone-900 text-white rounded-xl shadow-2xl p-1.5 flex items-center gap-1 border border-stone-700 animate-in fade-in zoom-in-95 duration-150 select-none"
+          className="bg-stone-900 text-white rounded-xl shadow-2xl p-1.5 flex items-center gap-1 border border-stone-700 animate-in fade-in zoom-in-95 duration-150 select-none max-w-md"
         >
+          <div className="px-2.5 py-1 text-[11px] text-stone-300 border-r border-stone-700 max-w-[180px] sm:max-w-[220px] truncate font-sans" title={selectionToolbar.text}>
+            "{selectionToolbar.text}"
+          </div>
           <button
             onClick={handleCopySelectedText}
-            className="flex items-center gap-1.5 px-3 py-1.5 hover:bg-stone-800 rounded-lg text-xs font-medium text-stone-200 transition-colors"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 hover:bg-stone-800 rounded-lg text-xs font-medium text-stone-200 transition-colors shrink-0"
             title="Copy selected text to clipboard"
           >
             {copySuccess ? (
@@ -1176,8 +1193,7 @@ export default function PdfViewerModal({
                 <Check className="w-3.5 h-3.5 text-emerald-400" />
                 <span className="text-emerald-400">Copied!</span>
               </>
-            )
-            : (
+            ) : (
               <>
                 <Copy className="w-3.5 h-3.5 text-stone-400" />
                 <span>Copy</span>
@@ -1187,7 +1203,7 @@ export default function PdfViewerModal({
           <div className="w-px h-4 bg-stone-700" />
           <button
             onClick={handleCreateCardFromSelection}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white shadow-xs transition-colors"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-semibold text-white shadow-xs transition-colors shrink-0"
             title="Convert selected text directly into a flashcard"
           >
             <Brain className="w-3.5 h-3.5" />
