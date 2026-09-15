@@ -18,7 +18,12 @@ import {
   Copy,
   BookOpen,
   ArrowLeft,
-  Bookmark
+  Bookmark,
+  Search,
+  Eye,
+  EyeOff,
+  ArrowUp,
+  Filter
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import Tesseract from 'tesseract.js';
@@ -81,6 +86,12 @@ export default function PdfViewerModal({
   // Navigation History state for link jumps
   const [returnPage, setReturnPage] = useState(null);
 
+  // Flashcard Sidebar Navigation & Scroll Features
+  const [cardSearchQuery, setCardSearchQuery] = useState('');
+  const [flashcardFilter, setFlashcardFilter] = useState('all'); // 'all' | 'currentPage'
+  const [expandedCardIds, setExpandedCardIds] = useState(new Set());
+  const [autoScrollCards, setAutoScrollCards] = useState(true);
+
   // Text selection & floating toolbar state
   const [selectionToolbar, setSelectionToolbar] = useState({
     visible: false,
@@ -99,6 +110,8 @@ export default function PdfViewerModal({
   const [cardSavedFeedback, setCardSavedFeedback] = useState(false);
   
   const scrollContainerRef = useRef(null);
+  const flashcardListRef = useRef(null);
+  const cardRefs = useRef({});
   const selectionToolbarRef = useRef(null);
   const canvasRefs = useRef({});
   const textLayerRefs = useRef({});
@@ -113,6 +126,24 @@ export default function PdfViewerModal({
   const paperFlashcards = paper?.id
     ? flashcards.filter((f) => f.paperId === paper.id)
     : [];
+
+  const currentPageCards = paperFlashcards.filter(
+    (c) => Number(c.sourcePage) === Number(currentPage)
+  );
+
+  const filteredFlashcards = paperFlashcards.filter((card) => {
+    if (flashcardFilter === 'currentPage' && Number(card.sourcePage) !== Number(currentPage)) {
+      return false;
+    }
+    if (cardSearchQuery.trim()) {
+      const q = cardSearchQuery.toLowerCase();
+      const frontMatch = card.front?.toLowerCase().includes(q);
+      const backMatch = card.back?.toLowerCase().includes(q);
+      const pageMatch = String(card.sourcePage || '').includes(q);
+      return frontMatch || backMatch || pageMatch;
+    }
+    return true;
+  });
 
   const activeSection = sections.find(
     (s) => currentPage >= (s.startPage || 1) && currentPage <= (s.endPage || numPages)
@@ -130,6 +161,21 @@ export default function PdfViewerModal({
     setRenderedPages({});
     renderingRef.current = {};
   }, [scale]);
+
+  // Auto-scroll through flashcard sidebar list as pages change
+  useEffect(() => {
+    if (sidebarTab === 'flashcards' && autoScrollCards && currentPage) {
+      const matchingCard = filteredFlashcards.find(
+        (c) => Number(c.sourcePage) === Number(currentPage)
+      );
+      if (matchingCard && cardRefs.current[matchingCard.id]) {
+        cardRefs.current[matchingCard.id].scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest'
+        });
+      }
+    }
+  }, [currentPage, sidebarTab, autoScrollCards]);
 
   const handleZoom = (newScale) => {
     const clamped = Math.max(0.6, Math.min(2.5, Number(newScale.toFixed(2))));
@@ -360,6 +406,24 @@ export default function PdfViewerModal({
 
     if (!keepOpen) {
       setIsCardModalOpen(false);
+    }
+  };
+
+  const toggleCardExpand = (cardId) => {
+    setExpandedCardIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(cardId)) {
+        next.delete(cardId);
+      } else {
+        next.add(cardId);
+      }
+      return next;
+    });
+  };
+
+  const scrollToTopFlashcards = () => {
+    if (flashcardListRef.current) {
+      flashcardListRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
@@ -632,8 +696,6 @@ export default function PdfViewerModal({
         if (e?.name !== 'RenderingCancelledException') {
           console.warn(`Error rendering canvas page ${pageNum}:`, e);
         }
-      } finally {
-        renderingRef.current[pageNum] = false;
       }
     };
 
@@ -737,7 +799,7 @@ export default function PdfViewerModal({
           }
         }
       }
-    } catch (e) {
+    } catch (e) { 
       console.warn('Error running section scanner:', e);
     } finally {
       setIsScanningSections(false);
@@ -968,10 +1030,10 @@ export default function PdfViewerModal({
       <div className="flex-1 flex overflow-hidden gap-4">
         {/* Collapsible Sections & Flashcards Sidebar */}
         {showSectionsSidebar && (
-          <div className="w-72 bg-[#f7f6f3] border border-stone-200/90 rounded-xl p-3 flex flex-col justify-between shrink-0 overflow-y-auto space-y-3 shadow-md">
-            <div className="space-y-3">
+          <div className="w-80 bg-[#f7f6f3] border border-stone-200/90 rounded-xl p-3 flex flex-col justify-between shrink-0 overflow-hidden space-y-3 shadow-md h-full">
+            <div className="flex-1 flex flex-col min-h-0 space-y-3">
               {/* Sidebar Tabs */}
-              <div className="grid grid-cols-2 p-1 bg-stone-200/60 rounded-lg border border-stone-200/80 text-xs font-semibold">
+              <div className="grid grid-cols-2 p-1 bg-stone-200/60 rounded-lg border border-stone-200/80 text-xs font-semibold shrink-0">
                 <button
                   onClick={() => setSidebarTab('sections')}
                   className={`py-1.5 rounded-md text-center transition-all flex items-center justify-center gap-1.5 ${
@@ -995,8 +1057,8 @@ export default function PdfViewerModal({
               </div>
 
               {sidebarTab === 'sections' ? (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between border-b border-stone-200/80 pb-2">
+                <div className="flex-1 flex flex-col min-h-0 space-y-2">
+                  <div className="flex items-center justify-between border-b border-stone-200/80 pb-2 shrink-0">
                     <span className="text-[11px] font-bold text-stone-700 uppercase tracking-wider font-mono flex items-center gap-1.5">
                       <Sparkles className="w-3.5 h-3.5 text-stone-500" /> Outline Sections
                     </span>
@@ -1010,12 +1072,12 @@ export default function PdfViewerModal({
                   </div>
 
                   {isScanningSections ? (
-                    <div className="py-8 text-center space-y-2 text-stone-500 text-xs">
+                    <div className="py-8 text-center space-y-2 text-stone-500 text-xs shrink-0">
                       <Loader2 className="w-5 h-5 text-stone-700 animate-spin mx-auto" />
                       <p className="font-mono text-[10px]">{scanMethod}</p>
                     </div>
                   ) : sections.length === 0 ? (
-                    <div className="py-8 text-center text-stone-400 text-xs space-y-2 font-mono">
+                    <div className="py-8 text-center text-stone-400 text-xs space-y-2 font-mono shrink-0">
                       <p>No outline sections detected.</p>
                       <button
                         onClick={runSectionScanner}
@@ -1025,7 +1087,7 @@ export default function PdfViewerModal({
                       </button>
                     </div>
                   ) : (
-                    <div className="space-y-1.5 max-h-[calc(100vh-280px)] overflow-y-auto pr-1 custom-scrollbar">
+                    <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar space-y-1.5">
                       {sections.map((sec) => {
                         const isActive = currentPage >= (sec.startPage || 1) && currentPage <= (sec.endPage || numPages);
                         return (
@@ -1056,22 +1118,90 @@ export default function PdfViewerModal({
                   )}
                 </div>
               ) : (
-                /* Flashcards Tab Content */
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between border-b border-stone-200/80 pb-2">
+                /* Flashcards Tab Content with Enhanced Scroll & Search */
+                <div className="flex-1 flex flex-col min-h-0 space-y-2">
+                  <div className="flex items-center justify-between border-b border-stone-200/80 pb-2 shrink-0">
                     <span className="text-[11px] font-bold text-stone-700 uppercase tracking-wider font-mono flex items-center gap-1.5">
-                      <Brain className="w-3.5 h-3.5 text-stone-500" /> Active Recall
+                      <Brain className="w-3.5 h-3.5 text-stone-500" /> Flashcards ({filteredFlashcards.length})
                     </span>
-                    <button
-                      onClick={handleOpenCardModal}
-                      className="text-[11px] font-semibold text-stone-800 hover:text-stone-900 flex items-center gap-1"
-                    >
-                      <Plus className="w-3.5 h-3.5" /> Add
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={scrollToTopFlashcards}
+                        className="p-1 text-stone-400 hover:text-stone-700 rounded hover:bg-stone-200/60 transition-colors"
+                        title="Scroll to Top of Flashcards List"
+                      >
+                        <ArrowUp className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={handleOpenCardModal}
+                        className="text-[11px] font-semibold text-stone-800 hover:text-stone-900 flex items-center gap-1 bg-white hover:bg-stone-100 px-2 py-0.5 rounded border border-stone-200 shadow-xs transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Add
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Flashcard Search & Filter Navigation Controls */}
+                  <div className="space-y-1.5 shrink-0">
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400" />
+                      <input
+                        type="text"
+                        placeholder="Search cards or page #..."
+                        value={cardSearchQuery}
+                        onChange={(e) => setCardSearchQuery(e.target.value)}
+                        className="w-full bg-white border border-stone-200 rounded-lg pl-8 pr-7 py-1 text-xs text-stone-800 placeholder-stone-400 focus:outline-none focus:border-stone-400 font-sans shadow-xs"
+                      />
+                      {cardSearchQuery && (
+                        <button
+                          onClick={() => setCardSearchQuery('')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 text-xs font-bold"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between gap-1 text-[10px] font-mono">
+                      <div className="flex items-center gap-1 bg-stone-200/60 p-0.5 rounded-md border border-stone-200/80">
+                        <button
+                          onClick={() => setFlashcardFilter('all')}
+                          className={`px-2 py-0.5 rounded transition-all ${
+                            flashcardFilter === 'all'
+                              ? 'bg-white text-stone-900 font-semibold shadow-xs'
+                              : 'text-stone-500 hover:text-stone-800'
+                          }`}
+                        >
+                          All ({paperFlashcards.length})
+                        </button>
+                        <button
+                          onClick={() => setFlashcardFilter('currentPage')}
+                          className={`px-2 py-0.5 rounded transition-all ${
+                            flashcardFilter === 'currentPage'
+                              ? 'bg-white text-stone-900 font-semibold shadow-xs'
+                              : 'text-stone-500 hover:text-stone-800'
+                          }`}
+                        >
+                          Page {currentPage} ({currentPageCards.length})
+                        </button>
+                      </div>
+
+                      <button
+                        onClick={() => setAutoScrollCards(!autoScrollCards)}
+                        className={`px-1.5 py-0.5 rounded border transition-colors ${ 
+                          autoScrollCards 
+                            ? 'bg-stone-800 text-white border-stone-800' 
+                            : 'bg-white text-stone-500 border-stone-200 hover:text-stone-800'
+                        }`}
+                        title="Auto-scroll flashcards sidebar as you read through PDF pages"
+                      >
+                        Auto-Sync
+                      </button>
+                    </div>
                   </div>
 
                   {paperFlashcards.length === 0 ? (
-                    <div className="py-8 text-center text-stone-400 text-xs space-y-3">
+                    <div className="py-8 text-center text-stone-400 text-xs space-y-3 shrink-0">
                       <Brain className="w-8 h-8 mx-auto text-stone-300" />
                       <p className="text-[11px]">No flashcards created yet for this paper.</p>
                       <button
@@ -1081,32 +1211,91 @@ export default function PdfViewerModal({
                         + Create First Card (p. {currentPage})
                       </button>
                     </div>
+                  ) : filteredFlashcards.length === 0 ? (
+                    <div className="py-6 text-center text-stone-400 text-xs space-y-2 shrink-0 font-mono">
+                      <p>No cards match filter.</p>
+                      <button
+                        onClick={() => { setCardSearchQuery(''); setFlashcardFilter('all'); }}
+                        className="text-[10px] text-stone-600 underline font-sans"
+                      >
+                        Clear filters
+                      </button>
+                    </div>
                   ) : (
-                    <div className="space-y-2 max-h-[calc(100vh-280px)] overflow-y-auto pr-1 custom-scrollbar">
-                      {paperFlashcards.map((card) => (
-                        <div
-                          key={card.id}
-                          className="p-2.5 rounded-lg bg-white border border-stone-200/80 hover:border-stone-300 transition-all text-xs space-y-1.5 group shadow-xs"
-                        >
-                          <div className="flex items-start justify-between gap-1.5">
-                            <p className="font-semibold text-stone-800 leading-snug line-clamp-2">
+                    <div 
+                      ref={flashcardListRef}
+                      className="flex-1 overflow-y-auto pr-1 custom-scrollbar space-y-2"
+                    >
+                      {filteredFlashcards.map((card, idx) => {
+                        const isOnCurrentPage = Number(card.sourcePage) === Number(currentPage);
+                        const isExpanded = expandedCardIds.has(card.id);
+                        return (
+                          <div
+                            key={card.id || `card-${idx}`}
+                            ref={(el) => (cardRefs.current[card.id] = el)}
+                            className={`p-2.5 rounded-lg border transition-all text-xs space-y-2 shadow-xs ${
+                              isOnCurrentPage
+                                ? 'bg-amber-50/80 border-amber-300/90 text-stone-900 ring-1 ring-amber-200'
+                                : 'bg-white border-stone-200/80 hover:border-stone-300 text-stone-800'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-1.5">
+                              <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                                <span className="font-mono text-[10px] font-bold text-stone-400">
+                                  #{idx + 1}
+                                </span>
+                                {card.sourcePage && (
+                                  <button
+                                    onClick={() => jumpToPageWithHistory(card.sourcePage)}
+                                    className={`px-1.5 py-0.5 rounded text-[10px] font-mono hover:opacity-80 transition-colors shrink-0 ${
+                                      isOnCurrentPage
+                                        ? 'bg-amber-200/80 text-amber-900 font-bold border border-amber-300'
+                                        : 'bg-stone-100 text-stone-600 border border-stone-200'
+                                    }`}
+                                    title={`Jump directly to Page ${card.sourcePage} in PDF`}
+                                  >
+                                    p. {card.sourcePage}
+                                  </button>
+                                )}
+                                {isOnCurrentPage && (
+                                  <span className="px-1.5 py-0.2 bg-amber-200/60 text-amber-900 rounded text-[9px] font-bold uppercase font-mono">
+                                    Active Page
+                                  </span>
+                                )}
+                              </div>
+
+                              <button
+                                onClick={() => toggleCardExpand(card.id)}
+                                className="p-1 hover:bg-stone-100 rounded text-stone-400 hover:text-stone-700 transition-colors shrink-0"
+                                title={isExpanded ? "Hide Back / Answer" : "Show Back / Answer"}
+                              >
+                                {isExpanded ? (
+                                  <EyeOff className="w-3.5 h-3.5 text-stone-600" />
+                                ) : (
+                                  <Eye className="w-3.5 h-3.5 text-stone-400" />
+                                )}
+                              </button>
+                            </div>
+
+                            <p className="font-semibold text-stone-800 leading-snug font-sans">
                               {card.front}
                             </p>
-                            {card.sourcePage && (
-                              <button
-                                onClick={() => jumpToPageWithHistory(card.sourcePage)}
-                                className="px-1.5 py-0.5 rounded bg-stone-100 text-stone-600 border border-stone-200 text-[10px] font-mono hover:bg-stone-200 shrink-0"
-                                title={`Jump directly to Page ${card.sourcePage} in PDF`}
-                              >
-                                p. {card.sourcePage}
-                              </button>
+
+                            {isExpanded ? (
+                              <div className="text-stone-700 text-[11px] bg-stone-100/90 p-2 rounded-lg border border-stone-200/80 font-sans space-y-1 animate-in fade-in duration-100">
+                                <span className="text-[9px] font-bold text-stone-400 uppercase font-mono block">
+                                  Answer / Takeaway:
+                                </span>
+                                <p className="whitespace-pre-wrap leading-relaxed">{card.back}</p>
+                              </div>
+                            ) : (
+                              <p className="text-stone-500 text-[11px] line-clamp-2 bg-stone-50/80 p-1.5 rounded border border-stone-100 font-sans italic">
+                                {card.back}
+                              </p>
                             )}
                           </div>
-                          <p className="text-stone-600 text-[11px] line-clamp-2 bg-stone-50 p-1.5 rounded border border-stone-100 font-sans">
-                            {card.back}
-                          </p>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -1114,7 +1303,7 @@ export default function PdfViewerModal({
             </div>
 
             {/* Silent Dwell / Stats Info Footer */}
-            <div className="pt-3 border-t border-stone-200/80 text-[10px] text-stone-500 font-mono space-y-1">
+            <div className="pt-3 border-t border-stone-200/80 text-[10px] text-stone-500 font-mono space-y-1 shrink-0">
               <p className="flex items-center justify-between text-stone-500">
                 <span>Auto-Mark:</span>
                 <span className="text-emerald-600 font-semibold">{settings.autoMarkDwell ? 'ACTIVE' : 'OFF'}</span>
