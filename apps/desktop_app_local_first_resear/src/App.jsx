@@ -3,6 +3,7 @@ import Sidebar from './components/Sidebar';
 import PaperList from './components/PaperList';
 import PaperDetail, { DEFAULT_ACADEMIC_SECTIONS } from './components/PaperDetail';
 import FlashcardReview from './components/FlashcardReview';
+import IssuesTracker from './components/IssuesTracker';
 import PaperFormModal from './components/PaperFormModal';
 import PdfViewerModal from './components/PdfViewerModal';
 import SettingsModal from './components/SettingsModal';
@@ -10,6 +11,7 @@ import SettingsModal from './components/SettingsModal';
 const STORAGE_KEY_PAPERS = 'paper_companion_papers_v1';
 const STORAGE_KEY_FLASHCARDS = 'paper_companion_flashcards_v1';
 const STORAGE_KEY_SETTINGS = 'paper_companion_settings_v1';
+const STORAGE_KEY_ISSUES = 'paper_companion_issues_v1';
 
 const createDefaultSections = () =>
   DEFAULT_ACADEMIC_SECTIONS.map((name, idx) => ({
@@ -47,14 +49,39 @@ export default function App() {
     }
   });
 
+  const [issues, setIssues] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_ISSUES);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
   const [settings, setSettings] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_SETTINGS);
       return saved
-        ? { dwellThresholdMinutes: 3, autoMarkDwell: true, defaultPaperView: 'pdf', ...JSON.parse(saved) }
-        : { dwellThresholdMinutes: 3, autoMarkDwell: true, defaultPaperView: 'pdf' };
+        ? {
+            dwellThresholdMinutes: 3,
+            autoMarkDwell: true,
+            defaultPaperView: 'pdf',
+            geminiApiKey: '',
+            ...JSON.parse(saved)
+          }
+        : {
+            dwellThresholdMinutes: 3,
+            autoMarkDwell: true,
+            defaultPaperView: 'pdf',
+            geminiApiKey: ''
+          };
     } catch {
-      return { dwellThresholdMinutes: 3, autoMarkDwell: true, defaultPaperView: 'pdf' };
+      return {
+        dwellThresholdMinutes: 3,
+        autoMarkDwell: true,
+        defaultPaperView: 'pdf',
+        geminiApiKey: ''
+      };
     }
   });
 
@@ -72,7 +99,7 @@ export default function App() {
     totalPages: 1
   });
 
-  // Sync state to localStorage
+  // Sync state to localStorage with exception safety
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY_PAPERS, JSON.stringify(papers));
@@ -88,6 +115,14 @@ export default function App() {
       console.warn('Storage quota exceeded or error saving flashcards:', e);
     }
   }, [flashcards]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_ISSUES, JSON.stringify(issues));
+    } catch (e) {
+      console.warn('Storage quota exceeded or error saving issues:', e);
+    }
+  }, [issues]);
 
   useEffect(() => {
     try {
@@ -152,6 +187,16 @@ export default function App() {
     );
   };
 
+  const handleSaveIssue = (newIssue) => {
+    setIssues((prev) => [newIssue, ...prev]);
+  };
+
+  const handleUpdateIssue = (issueId, updates) => {
+    setIssues((prev) =>
+      prev.map((i) => (i.id === issueId ? { ...i, ...updates } : i))
+    );
+  };
+
   const handleOpenPdf = (paperOrUrl, paperTitle) => {
     let pdfData = null;
     let title = 'PDF Document';
@@ -171,7 +216,7 @@ export default function App() {
     }
 
     if (pdfData) {
-      setPdfViewing({ 
+      setPdfViewing({
         isOpen: true,
         pdfData,
         title,
@@ -187,7 +232,7 @@ export default function App() {
   const handleSelectPaper = (paper, preferredView) => {
     if (!paper) return;
     setSelectedPaperId(paper.id);
-    
+
     const targetView = preferredView || settings?.defaultPaperView || 'pdf';
     if (targetView === 'pdf' && (paper.pdfUrl || paper.pdfFile)) {
       handleOpenPdf(paper);
@@ -197,7 +242,7 @@ export default function App() {
   const handlePdfPageChange = (newPage) => {
     if (pdfViewing.paperId) {
       handleUpdatePaper(pdfViewing.paperId, { currentPage: newPage });
-    } 
+    }
     setPdfViewing((prev) => ({ ...prev, currentPage: newPage }));
   };
 
@@ -218,6 +263,7 @@ export default function App() {
         setFilterStatus={setFilterStatus}
         papers={papers}
         flashcards={flashcards}
+        issues={issues}
         onNewPaper={() => setIsFormOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
       />
@@ -244,11 +290,19 @@ export default function App() {
               settings={settings}
             />
           )
-        ) : (
+        ) : activeTab === 'flashcards' ? (
           <FlashcardReview
             flashcards={flashcards}
             papers={papers}
             onUpdateMastery={handleUpdateMastery}
+          />
+        ) : (
+          <IssuesTracker
+            issues={issues}
+            onSaveIssue={handleSaveIssue}
+            onUpdateIssue={handleUpdateIssue}
+            settings={settings}
+            onOpenSettings={() => setIsSettingsOpen(true)}
           />
         )}
       </main>

@@ -1,8 +1,10 @@
-import React from 'react';
-import { X, Settings, Clock, CheckCircle2, ShieldCheck } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, Settings, Clock, CheckCircle2, ShieldCheck, Key } from 'lucide-react';
 
 export default function SettingsModal({ isOpen, onClose, settings, onSaveSettings }) {
   if (!isOpen) return null;
+
+  const [geminiKey, setGeminiKey] = useState(settings.geminiApiKey || '');
 
   const handleThresholdChange = (e) => {
     const val = Math.max(1, Math.min(10, Number(e.target.value) || 1));
@@ -13,13 +15,17 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
     onSaveSettings({ ...settings, autoMarkDwell: !settings.autoMarkDwell });
   };
 
+  const handleSaveKey = () => {
+    onSaveSettings({ ...settings, geminiApiKey: geminiKey.trim() });
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
       <div className="bg-white border border-stone-200 rounded-2xl w-full max-w-md shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         <div className="p-4 px-6 border-b border-stone-200 flex items-center justify-between bg-stone-50/50">
           <div className="flex items-center gap-2.5">
             <Settings className="w-4 h-4 text-stone-700" />
-            <h2 className="font-bold text-stone-800 text-sm">Reading Settings</h2>
+            <h2 className="font-bold text-stone-800 text-sm">App & AI Settings</h2>
           </div>
           <button
             onClick={onClose}
@@ -29,7 +35,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
           </button>
         </div>
 
-        <div className="p-6 space-y-5 text-xs">
+        <div className="p-6 space-y-5 text-xs overflow-y-auto max-h-[75vh]">
           {/* Dwell Time Threshold */}
           <div className="space-y-3 bg-stone-50/70 p-4 rounded-xl border border-stone-200/80">
             <div className="flex items-center justify-between">
@@ -52,11 +58,6 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
               onChange={handleThresholdChange}
               className="w-full accent-stone-800 bg-stone-200 rounded-lg cursor-pointer h-2"
             />
-            <div className="flex justify-between text-[10px] font-mono text-stone-400">
-              <span>1 min (Quick)</span>
-              <span>5 mins</span>
-              <span>10 mins (Deep)</span>
-            </div>
           </div>
 
           {/* Silent Auto-Mark Switch */}
@@ -84,16 +85,45 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
             </button>
           </div>
 
+          {/* Gemini API Key Configuration */}
+          <div className="space-y-2 bg-stone-50/70 p-4 rounded-xl border border-stone-200/80">
+            <label className="font-semibold text-stone-800 flex items-center gap-2">
+              <Key className="w-4 h-4 text-indigo-600" /> Google Gemini API Key
+            </label>
+            <p className="text-[11px] text-stone-500 leading-relaxed">
+              Enable Gemini multimodal analysis for issue requests and screenshot image uploads.
+            </p>
+            <div className="flex gap-2 pt-1">
+              <input
+                type="password"
+                placeholder="AIzaSy..."
+                value={geminiKey}
+                onChange={(e) => setGeminiKey(e.target.value)}
+                className="flex-1 bg-white border border-stone-200 rounded-lg px-3 py-1.5 text-xs text-stone-800 focus:outline-none focus:border-stone-400 font-mono shadow-xs"
+              />
+              <button
+                type="button"
+                onClick={handleSaveKey}
+                className="px-3 py-1.5 bg-stone-900 hover:bg-stone-800 text-white font-medium rounded-lg text-xs transition-colors shadow-xs"
+              >
+                Save Key
+              </button>
+            </div>
+          </div>
+
           {/* Local Privacy Banner */}
           <div className="flex items-center gap-2.5 p-3 rounded-xl bg-stone-100 border border-stone-200 text-stone-700 text-[11px]">
             <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-600" />
-            <span>100% Local First. OCR and storage run entirely inside your browser.</span>
+            <span>100% Local First. OCR, issue requests, and paper data stay stored inside your browser.</span>
           </div>
         </div>
 
         <div className="p-4 border-t border-stone-200 bg-stone-50/50 flex justify-end">
           <button
-            onClick={onClose}
+            onClick={() => {
+              handleSaveKey();
+              onClose();
+            }}
             className="px-4 py-2 bg-stone-900 hover:bg-stone-800 text-white font-medium rounded-xl text-xs transition-colors shadow-xs"
           >
             Done
