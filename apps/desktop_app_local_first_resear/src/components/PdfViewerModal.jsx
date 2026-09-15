@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import Tesseract from 'tesseract.js';
+import FlashcardModal from './FlashcardModal';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '3.11.174'}/pdf.worker.min.js`;
 
@@ -61,6 +62,7 @@ export default function PdfViewerModal({
   paper,
   onUpdatePaper,
   onAddFlashcard,
+  onUpdateMastery,
   flashcards = [],
   settings = { dwellThresholdMinutes: 3, autoMarkDwell: true },
   onOpenSettings
@@ -77,6 +79,10 @@ export default function PdfViewerModal({
   const [renderedPages, setRenderedPages] = useState({});
   const [scale, setScale] = useState(1.25);
   const [pageDimensions, setPageDimensions] = useState({});
+
+  // Flashcard Review Modal State
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [reviewCardIndex, setReviewCardIndex] = useState(0);
 
   // Navigation History state for link jumps
   const [returnPage, setReturnPage] = useState(null);
@@ -112,7 +118,7 @@ export default function PdfViewerModal({
 
   const paperFlashcards = paper?.id
     ? flashcards.filter((f) => f.paperId === paper.id)
-    : [];
+    : flashcards;
 
   const activeSection = sections.find(
     (s) => currentPage >= (s.startPage || 1) && currentPage <= (s.endPage || numPages)
@@ -1083,18 +1089,26 @@ export default function PdfViewerModal({
                     </div>
                   ) : (
                     <div className="space-y-2 max-h-[calc(100vh-280px)] overflow-y-auto pr-1 custom-scrollbar">
-                      {paperFlashcards.map((card) => (
+                      {paperFlashcards.map((card, idx) => (
                         <div
                           key={card.id}
-                          className="p-2.5 rounded-lg bg-white border border-stone-200/80 hover:border-stone-300 transition-all text-xs space-y-1.5 group shadow-xs"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setReviewCardIndex(idx);
+                            setIsReviewModalOpen(true);
+                          }}
+                          className="p-2.5 rounded-lg bg-white border border-stone-200/80 hover:border-stone-400 transition-all text-xs space-y-1.5 group shadow-xs cursor-pointer hover:shadow-md relative"
                         >
                           <div className="flex items-start justify-between gap-1.5">
-                            <p className="font-semibold text-stone-800 leading-snug line-clamp-2">
+                            <p className="font-semibold text-stone-800 leading-snug line-clamp-2 group-hover:text-stone-900">
                               {card.front}
                             </p>
                             {card.sourcePage && (
                               <button
-                                onClick={() => jumpToPageWithHistory(card.sourcePage)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  jumpToPageWithHistory(card.sourcePage);
+                                }}
                                 className="px-1.5 py-0.5 rounded bg-stone-100 text-stone-600 border border-stone-200 text-[10px] font-mono hover:bg-stone-200 shrink-0"
                                 title={`Jump directly to Page ${card.sourcePage} in PDF`}
                               >
@@ -1105,6 +1119,9 @@ export default function PdfViewerModal({
                           <p className="text-stone-600 text-[11px] line-clamp-2 bg-stone-50 p-1.5 rounded border border-stone-100 font-sans">
                             {card.back}
                           </p>
+                          <div className="pt-1 flex justify-end text-[10px] font-mono text-indigo-600 font-semibold group-hover:underline">
+                            Practice Card &rarr;
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1354,6 +1371,19 @@ export default function PdfViewerModal({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Interactive Review Modal for Sidebar Flashcards */}
+      {isReviewModalOpen && (
+        <FlashcardModal
+          key={`review-modal-${reviewCardIndex}-${paperFlashcards[reviewCardIndex]?.id || 'card'}`}
+          isOpen={isReviewModalOpen}
+          onClose={() => setIsReviewModalOpen(false)}
+          flashcards={paperFlashcards}
+          initialIndex={reviewCardIndex}
+          papers={paper ? [paper] : []}
+          onUpdateMastery={onUpdateMastery}
+        />
       )}
     </div>
   );
