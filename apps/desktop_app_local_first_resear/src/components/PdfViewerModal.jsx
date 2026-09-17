@@ -3,6 +3,8 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   List,
   Sparkles,
   CheckCircle2,
@@ -18,7 +20,8 @@ import {
   Copy,
   BookOpen,
   ArrowLeft,
-  Bookmark
+  Bookmark,
+  Search
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import Tesseract from 'tesseract.js';
@@ -79,6 +82,7 @@ export default function PdfViewerModal({
   const [renderedPages, setRenderedPages] = useState({});
   const [scale, setScale] = useState(1.25);
   const [pageDimensions, setPageDimensions] = useState({});
+  const [flashcardSearch, setFlashcardSearch] = useState('');
 
   // Flashcard Review Modal State
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
@@ -106,6 +110,7 @@ export default function PdfViewerModal({
   
   const scrollContainerRef = useRef(null);
   const selectionToolbarRef = useRef(null);
+  const flashcardsListRef = useRef(null);
   const canvasRefs = useRef({});
   const textLayerRefs = useRef({});
   const annotationLayerRefs = useRef({});
@@ -119,6 +124,15 @@ export default function PdfViewerModal({
   const paperFlashcards = paper?.id
     ? flashcards.filter((f) => f.paperId === paper.id)
     : flashcards;
+
+  const filteredFlashcards = paperFlashcards.filter((card) => {
+    if (!flashcardSearch.trim()) return true;
+    const q = flashcardSearch.toLowerCase();
+    return (
+      card.front?.toLowerCase().includes(q) ||
+      card.back?.toLowerCase().includes(q)
+    );
+  });
 
   const activeSection = sections.find(
     (s) => currentPage >= (s.startPage || 1) && currentPage <= (s.endPage || numPages)
@@ -161,6 +175,21 @@ export default function PdfViewerModal({
       });
     } else {
       setScale(clamped);
+    }
+  };
+
+  const scrollFlashcards = (direction) => {
+    if (flashcardsListRef.current) {
+      const amount = direction === 'up' ? -180 : 180;
+      flashcardsListRef.current.scrollBy({ top: amount, behavior: 'smooth' });
+    }
+  };
+
+  const scrollToCurrentPageCard = () => {
+    if (!flashcardsListRef.current) return;
+    const cardElement = flashcardsListRef.current.querySelector(`[data-card-page="${currentPage}"]`);
+    if (cardElement) {
+      cardElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
   };
 
@@ -543,7 +572,6 @@ export default function PdfViewerModal({
               throw new Error('No native renderTextLayer function');
             }
           } catch (err) {
-            // Fallback custom text placement
             try {
               const textContent = await page.getTextContent();
               if (isCancelled) return;
@@ -829,6 +857,10 @@ export default function PdfViewerModal({
 
   if (!isOpen || !rawUrl) return null;
 
+  const currentPageFlashcardsCount = paperFlashcards.filter(
+    (c) => c.sourcePage === currentPage
+  ).length;
+
   return (
     <div className="fixed inset-0 z-50 bg-stone-900/40 backdrop-blur-sm flex flex-col p-4 select-none">
       {/* Top Navigation & Status Bar */}
@@ -971,13 +1003,13 @@ export default function PdfViewerModal({
       </div>
 
       {/* Main Viewport Workspace */}
-      <div className="flex-1 flex overflow-hidden gap-4">
+      <div className="flex-1 flex overflow-hidden gap-4 min-h-0">
         {/* Collapsible Sections & Flashcards Sidebar */}
         {showSectionsSidebar && (
-          <div className="w-72 bg-[#f7f6f3] border border-stone-200/90 rounded-xl p-3 flex flex-col justify-between shrink-0 overflow-y-auto space-y-3 shadow-md">
-            <div className="space-y-3">
+          <div className="w-72 bg-[#f7f6f3] border border-stone-200/90 rounded-xl p-3 flex flex-col shrink-0 overflow-hidden shadow-md h-full min-h-0">
+            <div className="flex-1 flex flex-col min-h-0 space-y-3">
               {/* Sidebar Tabs */}
-              <div className="grid grid-cols-2 p-1 bg-stone-200/60 rounded-lg border border-stone-200/80 text-xs font-semibold">
+              <div className="grid grid-cols-2 p-1 bg-stone-200/60 rounded-lg border border-stone-200/80 text-xs font-semibold shrink-0">
                 <button
                   onClick={() => setSidebarTab('sections')}
                   className={`py-1.5 rounded-md text-center transition-all flex items-center justify-center gap-1.5 ${
@@ -1001,8 +1033,8 @@ export default function PdfViewerModal({
               </div>
 
               {sidebarTab === 'sections' ? (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between border-b border-stone-200/80 pb-2">
+                <div className="flex-1 flex flex-col min-h-0 space-y-2">
+                  <div className="flex items-center justify-between border-b border-stone-200/80 pb-2 shrink-0">
                     <span className="text-[11px] font-bold text-stone-700 uppercase tracking-wider font-mono flex items-center gap-1.5">
                       <Sparkles className="w-3.5 h-3.5 text-stone-500" /> Outline Sections
                     </span>
@@ -1016,12 +1048,12 @@ export default function PdfViewerModal({
                   </div>
 
                   {isScanningSections ? (
-                    <div className="py-8 text-center space-y-2 text-stone-500 text-xs">
+                    <div className="py-8 text-center space-y-2 text-stone-500 text-xs my-auto">
                       <Loader2 className="w-5 h-5 text-stone-700 animate-spin mx-auto" />
                       <p className="font-mono text-[10px]">{scanMethod}</p>
                     </div>
                   ) : sections.length === 0 ? (
-                    <div className="py-8 text-center text-stone-400 text-xs space-y-2 font-mono">
+                    <div className="py-8 text-center text-stone-400 text-xs space-y-2 font-mono my-auto">
                       <p>No outline sections detected.</p>
                       <button
                         onClick={runSectionScanner}
@@ -1031,7 +1063,7 @@ export default function PdfViewerModal({
                       </button>
                     </div>
                   ) : (
-                    <div className="space-y-1.5 max-h-[calc(100vh-280px)] overflow-y-auto pr-1 custom-scrollbar">
+                    <div className="flex-1 overflow-y-auto pr-1 min-h-0 space-y-1.5 custom-scrollbar">
                       {sections.map((sec) => {
                         const isActive = currentPage >= (sec.startPage || 1) && currentPage <= (sec.endPage || numPages);
                         return (
@@ -1062,24 +1094,68 @@ export default function PdfViewerModal({
                   )}
                 </div>
               ) : (
-                /* Flashcards Tab Content */
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between border-b border-stone-200/80 pb-2">
+                /* Flashcards Tab Content with Dedicated Scroll Bar & Controls */
+                <div className="flex-1 flex flex-col min-h-0 space-y-2">
+                  <div className="flex items-center justify-between border-b border-stone-200/80 pb-2 shrink-0">
                     <span className="text-[11px] font-bold text-stone-700 uppercase tracking-wider font-mono flex items-center gap-1.5">
-                      <Brain className="w-3.5 h-3.5 text-stone-500" /> Active Recall
+                      <Brain className="w-3.5 h-3.5 text-indigo-600" /> Active Recall
                     </span>
-                    <button
-                      onClick={handleOpenCardModal}
-                      className="text-[11px] font-semibold text-stone-800 hover:text-stone-900 flex items-center gap-1"
-                    >
-                      <Plus className="w-3.5 h-3.5" /> Add
-                    </button>
+                    <div className="flex items-center gap-1">
+                      {/* Scroll Controls */}
+                      <button
+                        onClick={() => scrollFlashcards('up')}
+                        className="p-1 rounded hover:bg-stone-200/80 text-stone-500 hover:text-stone-800 transition-colors"
+                        title="Scroll Flashcards Up"
+                      >
+                        <ChevronUp className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => scrollFlashcards('down')}
+                        className="p-1 rounded hover:bg-stone-200/80 text-stone-500 hover:text-stone-800 transition-colors"
+                        title="Scroll Flashcards Down"
+                      >
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={handleOpenCardModal}
+                        className="text-[11px] font-semibold text-stone-800 hover:text-stone-900 flex items-center gap-1 ml-1"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Add
+                      </button>
+                    </div>
                   </div>
 
-                  {paperFlashcards.length === 0 ? (
-                    <div className="py-8 text-center text-stone-400 text-xs space-y-3">
+                  {/* Quick Filter & Page Match Indicator */}
+                  <div className="flex items-center justify-between gap-1.5 shrink-0">
+                    {paperFlashcards.length > 3 && (
+                      <div className="relative flex-1">
+                        <Search className="w-3 h-3 text-stone-400 absolute left-2 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          value={flashcardSearch}
+                          onChange={(e) => setFlashcardSearch(e.target.value)}
+                          placeholder="Filter cards..."
+                          className="w-full bg-white border border-stone-200 rounded-md pl-6 pr-2 py-1 text-[11px] text-stone-800 placeholder-stone-400 focus:outline-none focus:border-stone-400"
+                        />
+                      </div>
+                    )}
+                    {currentPageFlashcardsCount > 0 && (
+                      <button
+                        onClick={scrollToCurrentPageCard}
+                        className="px-2 py-1 rounded bg-indigo-50 border border-indigo-200 text-indigo-700 text-[10px] font-mono font-medium hover:bg-indigo-100 transition-colors shrink-0"
+                        title={`Scroll list to Page ${currentPage} cards`}
+                      >
+                        p. {currentPage} ({currentPageFlashcardsCount})
+                      </button>
+                    )}
+                  </div>
+
+                  {filteredFlashcards.length === 0 ? (
+                    <div className="py-8 text-center text-stone-400 text-xs space-y-3 my-auto">
                       <Brain className="w-8 h-8 mx-auto text-stone-300" />
-                      <p className="text-[11px]">No flashcards created yet for this paper.</p>
+                      <p className="text-[11px]">
+                        {flashcardSearch ? 'No cards match search' : 'No flashcards created yet for this paper.'}
+                      </p>
                       <button
                         onClick={handleOpenCardModal}
                         className="px-3 py-1.5 bg-white hover:bg-stone-50 text-stone-800 rounded-lg text-xs font-medium border border-stone-200 shadow-xs transition-colors"
@@ -1088,42 +1164,61 @@ export default function PdfViewerModal({
                       </button>
                     </div>
                   ) : (
-                    <div className="space-y-2 max-h-[calc(100vh-280px)] overflow-y-auto pr-1 custom-scrollbar">
-                      {paperFlashcards.map((card, idx) => (
-                        <div
-                          key={card.id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setReviewCardIndex(idx);
-                            setIsReviewModalOpen(true);
-                          }}
-                          className="p-2.5 rounded-lg bg-white border border-stone-200/80 hover:border-stone-400 transition-all text-xs space-y-1.5 group shadow-xs cursor-pointer hover:shadow-md relative"
-                        >
-                          <div className="flex items-start justify-between gap-1.5">
-                            <p className="font-semibold text-stone-800 leading-snug line-clamp-2 group-hover:text-stone-900">
-                              {card.front}
+                    <div
+                      ref={flashcardsListRef}
+                      className="flex-1 overflow-y-auto pr-1 space-y-2 min-h-0 custom-scrollbar"
+                    >
+                      {filteredFlashcards.map((card, idx) => {
+                        const isCurrentPageCard = card.sourcePage === currentPage;
+                        return (
+                          <div
+                            key={card.id}
+                            data-card-page={card.sourcePage}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const cardIndex = paperFlashcards.findIndex((f) => f.id === card.id);
+                              setReviewCardIndex(cardIndex >= 0 ? cardIndex : idx);
+                              setIsReviewModalOpen(true);
+                            }}
+                            className={`p-2.5 rounded-lg border transition-all text-xs space-y-1.5 group cursor-pointer relative ${
+                              isCurrentPageCard
+                                ? 'bg-indigo-50/50 border-indigo-200 hover:border-indigo-300 shadow-xs'
+                                : 'bg-white border-stone-200/80 hover:border-stone-400 shadow-xs'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-1.5">
+                              <p className="font-semibold text-stone-800 leading-snug line-clamp-2 group-hover:text-stone-900">
+                                {card.front}
+                              </p>
+                              {card.sourcePage && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    jumpToPageWithHistory(card.sourcePage);
+                                  }}
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-mono border hover:bg-stone-200 shrink-0 ${
+                                    isCurrentPageCard
+                                      ? 'bg-indigo-100 text-indigo-800 border-indigo-200 font-bold'
+                                      : 'bg-stone-100 text-stone-600 border-stone-200'
+                                  }`}
+                                  title={`Jump directly to Page ${card.sourcePage} in PDF`}
+                                >
+                                  p. {card.sourcePage}
+                                </button>
+                              )}
+                            </div>
+                            <p className="text-stone-600 text-[11px] line-clamp-2 bg-stone-50/80 p-1.5 rounded border border-stone-100 font-sans">
+                              {card.back}
                             </p>
-                            {card.sourcePage && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  jumpToPageWithHistory(card.sourcePage);
-                                }}
-                                className="px-1.5 py-0.5 rounded bg-stone-100 text-stone-600 border border-stone-200 text-[10px] font-mono hover:bg-stone-200 shrink-0"
-                                title={`Jump directly to Page ${card.sourcePage} in PDF`}
-                              >
-                                p. {card.sourcePage}
-                              </button>
-                            )}
+                            <div className="pt-0.5 flex justify-between items-center text-[10px] font-mono text-indigo-600 font-semibold">
+                              <span className="text-stone-400 font-normal uppercase text-[9px]">
+                                {card.masteryLevel || card.mastery || 'unreviewed'}
+                              </span>
+                              <span className="group-hover:underline">Practice Card &rarr;</span>
+                            </div>
                           </div>
-                          <p className="text-stone-600 text-[11px] line-clamp-2 bg-stone-50 p-1.5 rounded border border-stone-100 font-sans">
-                            {card.back}
-                          </p>
-                          <div className="pt-1 flex justify-end text-[10px] font-mono text-indigo-600 font-semibold group-hover:underline">
-                            Practice Card &rarr;
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -1131,7 +1226,7 @@ export default function PdfViewerModal({
             </div>
 
             {/* Silent Dwell / Stats Info Footer */}
-            <div className="pt-3 border-t border-stone-200/80 text-[10px] text-stone-500 font-mono space-y-1">
+            <div className="pt-3 border-t border-stone-200/80 text-[10px] text-stone-500 font-mono space-y-1 shrink-0 mt-auto">
               <p className="flex items-center justify-between text-stone-500">
                 <span>Auto-Mark:</span>
                 <span className="text-emerald-600 font-semibold">{settings.autoMarkDwell ? 'ACTIVE' : 'OFF'}</span>
@@ -1144,7 +1239,7 @@ export default function PdfViewerModal({
         {/* Continuous Canvas Scroll Viewer */}
         <div
           ref={scrollContainerRef}
-          className="flex-1 bg-stone-200/60 rounded-xl border border-stone-200/80 overflow-auto p-6 space-y-6 custom-scrollbar shadow-inner relative"
+          className="flex-1 bg-stone-200/60 rounded-xl border border-stone-200/80 overflow-auto p-6 space-y-6 custom-scrollbar shadow-inner relative min-h-0"
         >
           {Array.from({ length: numPages }, (_, idx) => idx + 1).map((pNum) => (
             <div
