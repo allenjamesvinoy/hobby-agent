@@ -233,6 +233,7 @@ export default function App() {
               onAddFlashcard={(card) => handleAddFlashcard({ ...card, paperId: selectedPaper.id })}
               onDeleteFlashcard={handleDeleteFlashcard}
               onOpenPdf={(target, title) => handleOpenPdf(target || selectedPaper, title)}
+              onUpdateMastery={handleUpdateMastery}
             />
           ) : (
             <PaperList
@@ -269,6 +270,7 @@ export default function App() {
         paper={papers.find((p) => p.id === pdfViewing.paperId)}
         onUpdatePaper={(updates) => pdfViewing.paperId && handleUpdatePaper(pdfViewing.paperId, updates)}
         onAddFlashcard={handleAddFlashcard}
+        onUpdateMastery={handleUpdateMastery}
         flashcards={flashcards}
         settings={settings}
         onOpenSettings={() => setIsSettingsOpen(true)}
