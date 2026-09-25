@@ -8,7 +8,8 @@ import {
   BookMarked,
   BarChart2,
   HardDrive,
-  Settings
+  Settings,
+  MessageSquarePlus
 } from 'lucide-react';
 
 export default function Sidebar({
@@ -18,12 +19,14 @@ export default function Sidebar({
   setFilterStatus,
   papers,
   flashcards,
+  issues = [],
   onNewPaper,
   onOpenSettings
 }) {
   const totalPapers = papers.length;
   const completedCount = papers.filter((p) => p.status === 'Completed').length;
   const readingCount = papers.filter((p) => p.status === 'Reading').length;
+  const openIssuesCount = issues.filter((i) => i.status === 'Open').length;
 
   return (
     <aside className="w-64 bg-[#f7f6f3] border-r border-stone-200/80 flex flex-col justify-between p-4 select-none pt-9 drag-region">
@@ -112,10 +115,10 @@ export default function Sidebar({
           </button>
         </div>
 
-        {/* Study Section */}
+        {/* Study & Support Section */}
         <div className="space-y-1">
           <p className="text-[11px] font-semibold text-stone-400 uppercase tracking-wider px-3 mb-1.5 font-mono">
-            Active Recall
+            Study & Issues
           </p>
           <button
             onClick={() => setActiveTab('flashcards')}
@@ -130,6 +133,22 @@ export default function Sidebar({
             </span>
             <span className="text-[10px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full font-mono font-medium">
               {flashcards.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('issues')}
+            className={`no-drag w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+              activeTab === 'issues'
+                ? 'bg-stone-200/70 text-stone-900 font-semibold'
+                : 'text-stone-600 hover:bg-stone-200/40 hover:text-stone-900'
+            }`}
+          >
+            <span className="flex items-center gap-2.5">
+              <MessageSquarePlus className="w-3.5 h-3.5 text-sky-600" /> Issue Requests
+            </span>
+            <span className="text-[10px] bg-sky-100 text-sky-800 px-2 py-0.5 rounded-full font-mono font-medium">
+              {openIssuesCount}
             </span>
           </button>
         </div>
