@@ -1231,7 +1231,7 @@ export default function PdfViewerModal({
                 <span>Auto-Mark:</span>
                 <span className="text-emerald-600 font-semibold">{settings.autoMarkDwell ? 'ACTIVE' : 'OFF'}</span>
               </p>
-              <p className="text-stone-400">Dwell: {settings.dwellThresholdMinutes}m/section • {paperFlashcards.length} Cards</p>
+              <p className="text-stone-400">Dwell: {settings.dwellThresholdMinutes}m/section &bull; {paperFlashcards.length} Cards</p>
             </div>
           </div>
         )}
@@ -1366,7 +1366,7 @@ export default function PdfViewerModal({
                 </h4>
                 <div className="flex items-center gap-2 mt-1 text-[11px] text-stone-500 font-mono">
                   <span className="truncate max-w-[180px] text-stone-700">{title}</span>
-                  <span>•</span>
+                  <span>&bull;</span>
                   <span className="px-1.5 py-0.5 rounded bg-stone-100 border border-stone-200 text-stone-800">
                     Page {cardSourcePage}
                   </span>
@@ -1447,7 +1447,7 @@ export default function PdfViewerModal({
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleSaveFlashcard(true)}
+                  onClick={() => handleSaveFlashcards(true)}
                   disabled={!cardFront.trim() || !cardBack.trim()}
                   className="px-3 py-1.5 rounded-lg text-xs font-medium bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-200 disabled:opacity-40 transition-colors shadow-xs"
                   title="Save card and keep dialog open to add another"
@@ -1456,7 +1456,7 @@ export default function PdfViewerModal({
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleSaveFlashcard(false)}
+                  onClick={() => handleSaveFlashcards(false)}
                   disabled={!cardFront.trim() || !cardBack.trim()}
                   className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-stone-900 hover:bg-stone-800 text-white shadow-xs disabled:opacity-40 transition-colors"
                 >
