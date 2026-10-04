@@ -672,6 +672,7 @@ function AppContent() {
                 <section className="lg:col-span-3 lg:sticky lg:top-4 self-start">
                   <FunctionInspectorPanel 
                     activeSymbolKey={activeSymbolKey}
+                    symbolCatalog={initialSymbolCatalog}
                     onAddXp={handleAddXp}
                     onSelectFileByPath={handleSelectFileByPath}
                     onAuditedChange={handleToggleSymbolAudit}

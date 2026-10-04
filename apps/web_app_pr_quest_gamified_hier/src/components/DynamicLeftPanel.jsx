@@ -14,6 +14,7 @@ import {
   BookOpen,
   Award
 } from 'lucide-react';
+import { symbolCatalog as defaultSymbolCatalog } from '../mockData.js';
 
 export default function DynamicLeftPanel({
   level,
@@ -202,7 +203,8 @@ export default function DynamicLeftPanel({
 
   // Level 3: Blast Radius Impact Matrix & Dependency Tree
   if (level === 3) {
-    const symbols = Object.keys(symbolCatalog);
+    const catalog = symbolCatalog || defaultSymbolCatalog || {};
+    const symbols = Object.keys(catalog);
     const auditedCount = auditedSymbols.length;
 
     return (
@@ -228,7 +230,7 @@ export default function DynamicLeftPanel({
         {/* Symbol Tree */}
         <div className="space-y-2 flex-1 overflow-y-auto max-h-[360px] pr-1">
           {symbols.map((symKey) => {
-            const sym = symbolCatalog[symKey];
+            const sym = catalog[symKey] || {};
             const isSelected = activeSymbol === symKey;
             const isAudited = auditedSymbols.includes(symKey);
 

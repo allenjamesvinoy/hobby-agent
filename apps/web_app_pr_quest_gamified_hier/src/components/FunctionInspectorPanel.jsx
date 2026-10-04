@@ -10,6 +10,7 @@ import {
   Columns, 
   HelpCircle 
 } from 'lucide-react';
+import { symbolCatalog as defaultSymbolCatalog } from '../mockData.js';
 
 export default function FunctionInspectorPanel({
   activeSymbolKey,
@@ -20,7 +21,8 @@ export default function FunctionInspectorPanel({
   const [selectedMatchId, setSelectedMatchId] = useState(null);
   const [viewFormat, setViewFormat] = useState('split'); // 'split' | 'modified' | 'original'
 
-  const activeSymbol = symbolCatalog[activeSymbolKey] || symbolCatalog['rotateSessionToken'];
+  const catalog = symbolCatalog || defaultSymbolCatalog || {};
+  const activeSymbol = catalog[activeSymbolKey] || catalog['rotateSessionToken'] || Object.values(catalog)[0];
 
   if (!activeSymbol) {
     return (
@@ -187,11 +189,11 @@ export default function FunctionInspectorPanel({
       {/* Downstream Callers List */}
       <div className="border-t border-[#F1ECE4] pt-3">
         <div className="flex items-center justify-between text-xs font-bold text-[#242220] mb-2">
-          <span>Downstream Call Sites ({activeSymbol.callers.length})</span>
+          <span>Downstream Call Sites ({(activeSymbol.callers || []).length})</span>
           <span className="text-[10px] text-[#C35832]">Blast Radius</span>
         </div>
         <div className="space-y-1.5">
-          {activeSymbol.callers.map((caller, idx) => (
+          {(activeSymbol.callers || []).map((caller, idx) => (
             <div 
               key={idx}
               className="p-2 border border-[#E6E0D5] rounded-md bg-[#FFFDF9] hover:border-[#C35832] transition-colors"
