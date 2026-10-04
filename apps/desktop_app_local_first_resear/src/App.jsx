@@ -7,6 +7,7 @@ import IssuesTracker from './components/IssuesTracker';
 import PaperFormModal from './components/PaperFormModal';
 import PdfViewerModal from './components/PdfViewerModal';
 import SettingsModal from './components/SettingsModal';
+import CitationModal from './components/CitationModal';
 
 const STORAGE_KEY_PAPERS = 'paper_companion_papers_v1';
 const STORAGE_KEY_FLASHCARDS = 'paper_companion_flashcards_v1';
@@ -90,6 +91,11 @@ export default function App() {
   const [selectedPaperId, setSelectedPaperId] = useState(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [citationModal, setCitationModal] = useState({
+    isOpen: false,
+    doi: '',
+    bibtex: ''
+  });
   const [pdfViewing, setPdfViewing] = useState({
     isOpen: false,
     pdfData: null,
@@ -99,7 +105,6 @@ export default function App() {
     totalPages: 1
   });
 
-  // Sync state to localStorage with exception safety
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY_PAPERS, JSON.stringify(papers));
@@ -131,6 +136,26 @@ export default function App() {
       console.warn('Storage quota exceeded or error saving settings:', e);
     }
   }, [settings]);
+
+  const handleOpenCitation = (doi = '', bibtex = '') => {
+    setCitationModal({
+      isOpen: true,
+      doi,
+      bibtex
+    });
+  };
+
+  const handleSaveCitation = (citation) => {
+    if (selectedPaperId && citation) {
+      handleUpdatePaper(selectedPaperId, {
+        doi: citation.doi || '',
+        bibtex: citation.raw || '',
+        title: citation.title || undefined,
+        authors: citation.authors || undefined,
+        year: citation.year || undefined
+      });
+    }
+  };
 
   const handleSavePaper = (paperData) => {
     const newPaper = {
@@ -266,6 +291,7 @@ export default function App() {
         issues={issues}
         onNewPaper={() => setIsFormOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenCitation={handleOpenCitation}
       />
 
       <main className="flex-1 flex flex-col min-w-0 bg-[#fbfbfa] overflow-hidden">
@@ -280,6 +306,7 @@ export default function App() {
               onDeleteFlashcard={handleDeleteFlashcard}
               onOpenPdf={(target, title) => handleOpenPdf(target || selectedPaper, title)}
               onUpdateMastery={handleUpdateMastery}
+              onOpenCitation={handleOpenCitation}
             />
           ) : (
             <PaperList
@@ -345,6 +372,14 @@ export default function App() {
         onClose={() => setIsSettingsOpen(false)}
         settings={settings}
         onSaveSettings={setSettings}
+      />
+
+      <CitationModal
+        isOpen={citationModal.isOpen}
+        onClose={() => setCitationModal({ isOpen: false, doi: '', bibtex: '' })}
+        initialDoi={citationModal.doi}
+        initialBibTeX={citationModal.bibtex}
+        onSaveCitation={handleSaveCitation}
       />
     </div>
   );
