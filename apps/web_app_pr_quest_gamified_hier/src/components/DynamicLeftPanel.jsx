@@ -27,11 +27,11 @@ export default function DynamicLeftPanel({
   activeSymbol,
   onSelectSymbol,
   onSelectFileByPath,
-  onAddXp,
   onOpenArchModal,
   isLevelComplete,
   auditedSymbols = [],
-  onToggleSymbolAudit
+  onToggleSymbolAudit,
+  onProceedNextLevel
 }) {
   // Level 1: Spec & Intent Check
   if (level === 1) {
@@ -42,6 +42,8 @@ export default function DynamicLeftPanel({
         selectedSpec={selectedSpec} 
         setSelectedSpec={setSelectedSpec} 
         onAddXp={onAddXp}
+        isLevelComplete={isLevelComplete}
+        onProceedNextLevel={onProceedNextLevel}
       />
     );
   }

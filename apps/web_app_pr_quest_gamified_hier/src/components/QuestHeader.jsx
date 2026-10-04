@@ -190,37 +190,74 @@ export default function QuestHeader({
           const isActive = level === lvl.num;
           const isCompleted = unlockedLevel > lvl.num;
           const isLocked = lvl.num > unlockedLevel;
+          const isLevel2Locked = lvl.num === 2 && isLocked;
+
           return (
-            <button
-              key={lvl.num}
-              onClick={() => {
-                if (!isLocked) {
-                  setLevel(lvl.num);
-                }
-              }}
-              title={isLocked ? `Complete Level ${lvl.num - 1} milestone to unlock` : `Switch to Level ${lvl.num}`}
-              className={`text-left p-2.5 rounded-lg border transition-all ${
-                isActive 
-                  ? 'bg-[#FFFDF9] border-[#D08A29] shadow-sm ring-2 ring-[#D08A29] cursor-default' 
-                  : isCompleted
-                    ? 'bg-[#F4F8F5] border-[#4F6D56]/30 text-[#4F6D56] hover:bg-white cursor-pointer'
-                    : isLocked
-                      ? 'bg-[#F9F6F0]/60 border-[#E6E0D5] opacity-60 cursor-not-allowed'
-                      : 'bg-[#F9F6F0] border-[#E6E0D5] hover:bg-white cursor-pointer'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className={`text-xs font-bold uppercase tracking-wider ${
-                  isActive ? 'text-[#D08A29]' : isCompleted ? 'text-[#4F6D56]' : 'text-[#6B635A]'
-                }`}>
-                  Level {lvl.num}
-                </span>
-                {isCompleted && <CheckCircle className="w-4 h-4 text-[#4F6D56]" />}
-                {isLocked && <span className="text-[10px] text-[#6B635A] bg-[#F1ECE4] px-1.5 py-0.5 rounded font-medium">🔒 Locked</span>}
-              </div>
-              <div className="font-semibold text-xs text-[#242220] mt-0.5 truncate">{lvl.name}</div>
-              <div className="text-[10px] text-[#6B635A] truncate mt-0.5">{lvl.desc}</div>
-            </button>
+            <div key={lvl.num} className="relative group">
+              <button
+                onClick={() => {
+                  if (!isLocked) {
+                    setLevel(lvl.num);
+                  }
+                }}
+                className={`w-full text-left p-2.5 rounded-lg border transition-all ${
+                  isActive 
+                    ? 'bg-[#FFFDF9] border-[#D08A29] shadow-sm ring-2 ring-[#D08A29] cursor-default' 
+                    : isCompleted
+                      ? 'bg-[#F4F8F5] border-[#4F6D56]/30 text-[#4F6D56] hover:bg-white cursor-pointer'
+                      : isLocked
+                        ? 'bg-[#F9F6F0]/60 border-[#E6E0D5] opacity-60 cursor-not-allowed'
+                        : 'bg-[#F9F6F0] border-[#E6E0D5] hover:bg-white cursor-pointer'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className={`text-xs font-bold uppercase tracking-wider ${
+                    isActive ? 'text-[#D08A29]' : isCompleted ? 'text-[#4F6D56]' : 'text-[#6B635A]'
+                  }`}>
+                    Level {lvl.num}
+                  </span>
+                  {isCompleted && <CheckCircle className="w-4 h-4 text-[#4F6D56]" />}
+                  {isLocked && <span className="text-[10px] text-[#6B635A] bg-[#F1ECE4] px-1.5 py-0.5 rounded font-medium">🔒 Locked</span>}
+                </div>
+                <div className="font-semibold text-xs text-[#242220] mt-0.5 truncate">{lvl.name}</div>
+                <div className="text-[10px] text-[#6B635A] truncate mt-0.5">{lvl.desc}</div>
+              </button>
+
+              {/* Checklist Guide Hover Popover on Locked Tab */}
+              {isLocked && (
+                <div className="absolute left-0 top-full mt-2 w-72 bg-white border border-[#E6E0D5] rounded-xl p-3.5 shadow-xl z-50 invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all pointer-events-none">
+                  <div className="flex items-center gap-1.5 font-bold text-xs text-[#242220] pb-2 border-b border-[#F1ECE4]">
+                    <Award className="w-3.5 h-3.5 text-[#D08A29]" />
+                    <span>
+                      {lvl.num === 2 ? 'Level 1 Checklist Guide' :
+                       lvl.num === 3 ? 'Level 2 Checklist Guide' :
+                       'Level 3 Checklist Guide'}
+                    </span>
+                  </div>
+                  <ul className="text-[11px] text-[#6B635A] mt-2 space-y-1.5 list-disc list-inside leading-snug">
+                    {lvl.num === 2 ? (
+                      <>
+                        <li>Check off each AC as you verify code in the middle panel.</li>
+                        <li>Click sliced AC filter pills above to isolate relevant diff hunks.</li>
+                      </>
+                    ) : lvl.num === 3 ? (
+                      <>
+                        <li>Audit each Tier 1 architecture standard from docs/standards.</li>
+                        <li>Inspect the net architectural diagram and verify state flows.</li>
+                      </>
+                    ) : (
+                      <>
+                        <li>Audit function call blast radii in the right inspector panel.</li>
+                        <li>Verify downstream consumer integrations and imports.</li>
+                      </>
+                    )}
+                  </ul>
+                  <div className="mt-2.5 pt-2 border-t border-[#F1ECE4] text-[10px] text-[#C35832] font-semibold">
+                    Complete Level {lvl.num - 1} milestone to unlock
+                  </div>
+                </div>
+              )}
+            </div>
           );
         })}
       </div>
