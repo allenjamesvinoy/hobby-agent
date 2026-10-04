@@ -59,7 +59,7 @@ export default function QuestHeader({
           {/* Active Query Selector Pill */}
           <button
             onClick={onOpenQuerySelector}
-            className="flex items-center gap-2 bg-[#F9F6F0] hover:bg-[#F1ECE4] border border-[#E6E0D5] hover:border-[#4F6D56]/50 px-3 py-1.5 rounded-lg text-xs transition-all cursor-pointer group"
+            className="flex items-center gap-2 bg-[#F9F6F0] hover:bg-[#F1ECE4] border border-[#E6E0D5] hover:border-[#4F6D56]/50 px-3 py-1.5 rounded-lg text-xs transition-all cursor-pointer group flex-shrink-0"
             title="Switch Review Target / Pull Request Query"
           >
             <GitPullRequest className="w-3.5 h-3.5 text-[#4F6D56]" />
@@ -73,34 +73,14 @@ export default function QuestHeader({
               Switch ▼
             </span>
           </button>
-
-          {/* DB Live Sync Status Pill */}
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold">
-            {syncStatus === 'syncing' ? (
-              <span className="flex items-center gap-1 text-[#D08A29] bg-[#FFFDF9] border border-[#D08A29]/30 px-2 py-0.5 rounded-full animate-pulse">
-                <Database className="w-3 h-3" />
-                <span>Syncing to DB...</span>
-              </span>
-            ) : syncStatus === 'offline' ? (
-              <span className="flex items-center gap-1 text-[#6B635A] bg-[#F1ECE4] border border-[#E6E0D5] px-2 py-0.5 rounded-full" title="Running in local browser cache mode">
-                <Database className="w-3 h-3" />
-                <span>Offline DB</span>
-              </span>
-            ) : (
-              <span className="flex items-center gap-1 text-[#4F6D56] bg-[#F4F8F5] border border-[#4F6D56]/30 px-2 py-0.5 rounded-full" title="All progress persisted to SQLite database">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#4F6D56]" />
-                <span>Saved to DB</span>
-              </span>
-            )}
-          </div>
         </div>
 
-        {/* Right: User Profile + XP + Actions */}
-        <div className="flex flex-wrap items-center gap-3">
+        {/* Right: User Profile + XP + Actions (Right-aligned, zero dead whitespace) */}
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {/* Active Reviewer Profile Pill */}
           <button
             onClick={onOpenAuth}
-            className="flex items-center gap-2 bg-[#FFFDF9] hover:bg-[#F9F6F0] border border-[#D08A29]/30 hover:border-[#D08A29] px-3 py-1.5 rounded-lg text-xs transition-all cursor-pointer shadow-2xs group"
+            className="flex items-center gap-2 bg-[#FFFDF9] hover:bg-[#F9F6F0] border border-[#D08A29]/30 hover:border-[#D08A29] px-2.5 py-1.5 rounded-lg text-xs transition-all cursor-pointer shadow-2xs group flex-shrink-0"
             title="Click to switch reviewer persona or log in"
           >
             <span className="text-xl group-hover:scale-110 transition-transform">
@@ -111,35 +91,32 @@ export default function QuestHeader({
                 <span>{currentUser?.name || 'Alex Chen'}</span>
                 <span className="text-[10px] text-[#C35832] font-semibold">⇄</span>
               </div>
-              <div className="text-[10px] text-[#6B635A] font-mono truncate max-w-[130px]">
+              <div className="text-[10px] text-[#6B635A] font-mono truncate max-w-[110px]">
                 @{currentUser?.username || currentUser?.id || 'reviewer'}
               </div>
             </div>
           </button>
 
           {/* XP Badge */}
-          <div className="bg-[#F9F6F0] border border-[#E6E0D5] rounded-lg px-3 py-1.5 flex items-center gap-2">
+          <div className="bg-[#F9F6F0] border border-[#E6E0D5] rounded-lg px-2.5 py-1.5 flex items-center gap-1.5 flex-shrink-0">
             <div className="bg-[#D08A29] text-white p-1 rounded-full">
-              <Award className="w-3.5 h-3.5" />
+              <Award className="w-3 h-3" />
             </div>
             <div>
-              <div className="text-[9px] uppercase tracking-wider text-[#6B635A] font-bold">Total XP</div>
-              <div className="text-base font-extrabold text-[#D08A29] leading-none">{xp} XP</div>
+              <div className="text-[9px] uppercase tracking-wider text-[#6B635A] font-bold leading-none">Total XP</div>
+              <div className="text-sm font-extrabold text-[#D08A29] leading-tight">{xp} XP</div>
             </div>
           </div>
 
           {/* Review Progress */}
           <button 
             onClick={onOpenProgress}
-            className="bg-[#F9F6F0] hover:bg-[#F1ECE4] border border-[#E6E0D5] hover:border-[#C35832]/50 rounded-lg px-3 py-1.5 flex items-center gap-2 min-w-[140px] transition-all cursor-pointer text-left group shadow-2xs"
+            className="bg-[#F9F6F0] hover:bg-[#F1ECE4] border border-[#E6E0D5] hover:border-[#C35832]/50 rounded-lg px-2.5 py-1.5 flex items-center gap-2 w-28 sm:w-32 transition-all cursor-pointer text-left group shadow-2xs flex-shrink-0"
             title="Click to view detailed Review Progress breakdown"
           >
             <div className="w-full">
-              <div className="flex justify-between text-[9px] uppercase tracking-wider text-[#6B635A] font-bold mb-1 group-hover:text-[#C35832] transition-colors">
-                <span className="flex items-center gap-1">
-                  <span>Progress</span>
-                  <ChevronRight className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                </span>
+              <div className="flex justify-between text-[9px] uppercase tracking-wider text-[#6B635A] font-bold mb-1 group-hover:text-[#C35832] transition-colors leading-none">
+                <span>Progress</span>
                 <span className="font-extrabold text-[#242220]">{progressPercent}%</span>
               </div>
               <div className="w-full bg-[#E6E0D5] h-1.5 rounded-full overflow-hidden">
@@ -152,7 +129,7 @@ export default function QuestHeader({
           </button>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-shrink-0">
             <button
               onClick={onOpenInfo}
               className="px-2.5 py-1.5 bg-white border border-[#E6E0D5] text-[#242220] hover:bg-[#F9F6F0] rounded-lg text-xs font-medium transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
@@ -163,9 +140,10 @@ export default function QuestHeader({
             </button>
             <button
               onClick={onOpenArch}
-              className="px-2.5 py-1.5 bg-white border border-[#E6E0D5] text-[#242220] hover:bg-[#F9F6F0] rounded-lg text-xs font-medium transition-colors flex items-center gap-1 cursor-pointer"
+              className="px-2.5 py-1.5 bg-white border border-[#E6E0D5] text-[#242220] hover:bg-[#F9F6F0] rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              title="Open interactive architecture diagram"
             >
-              📖 Map
+              <span>📐 Architecture Diagram</span>
             </button>
             <button
               onClick={onOpenVerdict}

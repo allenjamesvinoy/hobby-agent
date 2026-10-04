@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { Check, AlertTriangle, MessageSquare, Star, ChevronDown, ChevronUp, Search, Info, ShieldAlert, Sparkles } from 'lucide-react';
-import FlagCommentModal from './FlagCommentModal';
+import { Check, AlertTriangle, MessageSquare, Star, ChevronDown, ChevronUp, Search, Info, ShieldAlert, Sparkles, X, Send } from 'lucide-react';
 import PeerCommentsSection from './PeerCommentsSection';
 
 export default function HierarchicalDiffViewer({ 
@@ -19,7 +18,9 @@ export default function HierarchicalDiffViewer({
   const [commentInputs, setCommentInputs] = useState({});
   const [expandedFiles, setExpandedFiles] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
-  const [flaggingFile, setFlaggingFile] = useState(null);
+  const [flaggingFileId, setFlaggingFileId] = useState(null);
+  const [flagText, setFlagText] = useState('');
+  const [flagCategory, setFlagCategory] = useState('Security / Correctness');
 
   const detectSymbol = (content) => {
     if (content.includes("rotateSessionToken")) return "rotateSessionToken";
@@ -41,25 +42,23 @@ export default function HierarchicalDiffViewer({
     onAddXp(40, `Reviewed & approved ${file.path}`, `review-file-${file.id}`);
   };
 
-  const handleOpenFlagModal = (file) => {
-    setFlaggingFile(file);
-  };
+  const handleInlineConfirmFlag = (file) => {
+    if (!flagText.trim()) return;
 
-  const handleConfirmFlag = (commentData) => {
-    if (!flaggingFile) return;
-
-    onAddComment(flaggingFile.id, {
+    onAddComment(file.id, {
       authorId: currentUser?.id || 'alex',
       authorName: currentUser?.name || 'Reviewer',
       authorAvatar: currentUser?.avatar || '👨‍💻',
       type: 'flag',
-      text: commentData.text,
+      category: flagCategory,
+      text: flagText.trim(),
       timestamp: 'Just now'
     });
 
-    onUpdateFileStatus(flaggingFile.id, 'flagged');
-    onAddXp(40, `Flagged ${flaggingFile.path} with required comment`, `flag-file-${flaggingFile.id}`);
-    setFlaggingFile(null);
+    onUpdateFileStatus(file.id, 'flagged');
+    onAddXp(40, `Flagged ${file.path} with required comment`, `flag-file-${file.id}`);
+    setFlaggingFileId(null);
+    setFlagText('');
   };
 
   const handleAddInlineComment = (fileId, lineNum) => {
@@ -251,18 +250,100 @@ export default function HierarchicalDiffViewer({
                     <Check className="w-3.5 h-3.5" />
                     <span>{currentUserStatus === 'approved' ? '✓ You Approved' : 'Approve'}</span>
                   </button>
-                  <button
-                    onClick={() => handleOpenFlagModal(file)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                      currentUserStatus === 'flagged'
-                        ? 'bg-[#C35832] text-white shadow-xs'
-                        : 'bg-white hover:bg-[#FFF8F6] text-[#C35832] border border-[#C35832]/30'
-                    }`}
-                    title="Flag issue (requires explanation comment for peers)"
-                  >
-                    <AlertTriangle className="w-3.5 h-3.5" />
-                    <span>{currentUserStatus === 'flagged' ? '🚩 You Flagged' : 'Flag Issue'}</span>
-                  </button>
+                  <div className="relative">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (flaggingFileId === file.id) {
+                          setFlaggingFileId(null);
+                        } else {
+                          setFlaggingFileId(file.id);
+                          setFlagText('');
+                          setFlagCategory('Security / Correctness');
+                        }
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                        currentUserStatus === 'flagged'
+                          ? 'bg-[#C35832] text-white shadow-xs'
+                          : 'bg-white hover:bg-[#FFF8F6] text-[#C35832] border border-[#C35832]/30'
+                      }`}
+                      title="Flag issue with required note for peers"
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      <span>{currentUserStatus === 'flagged' ? '🚩 You Flagged' : 'Flag Issue'}</span>
+                    </button>
+
+                    {/* Small text window that opens up near the flag section */}
+                    {flaggingFileId === file.id && (
+                      <div 
+                        className="absolute right-0 top-full mt-2 w-80 sm:w-96 bg-white border border-[#C35832]/40 rounded-xl p-3.5 shadow-2xl z-40 animate-in fade-in zoom-in-95 duration-150 text-left"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <div className="flex items-center justify-between pb-2 border-b border-[#F1ECE4]">
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-[#C35832]">
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                            <span>Flag Reason (Required)</span>
+                          </div>
+                          <button
+                            onClick={() => setFlaggingFileId(null)}
+                            className="text-[#6B635A] hover:text-[#242220] p-1 rounded-md hover:bg-black/5 cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        <p className="text-[11px] text-[#6B635A] mt-2 leading-relaxed">
+                          Explain what logic is flawed or what changes are required before this file can be approved:
+                        </p>
+
+                        {/* Category selection */}
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {['Security / Correctness', 'Architecture', 'Edge Case', 'Blast Radius'].map(cat => (
+                            <button
+                              key={cat}
+                              type="button"
+                              onClick={() => setFlagCategory(cat)}
+                              className={`text-[10px] px-2 py-0.5 rounded font-medium transition-colors cursor-pointer border ${
+                                flagCategory === cat 
+                                  ? 'bg-[#C35832] text-white border-[#C35832]' 
+                                  : 'bg-[#F9F6F0] text-[#6B635A] border-[#E6E0D5] hover:bg-[#F1ECE4]'
+                              }`}
+                            >
+                              {cat}
+                            </button>
+                          ))}
+                        </div>
+
+                        <textarea
+                          rows={3}
+                          autoFocus
+                          value={flagText}
+                          onChange={e => setFlagText(e.target.value)}
+                          placeholder="e.g. The rotateSessionToken() routine must validate that the salt meets minimum 256-bit entropy standards..."
+                          className="w-full mt-2.5 p-2.5 bg-[#F9F6F0] border border-[#E6E0D5] rounded-lg text-xs text-[#242220] focus:outline-none focus:border-[#C35832] resize-none leading-relaxed"
+                        />
+
+                        <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-[#F1ECE4]">
+                          <button
+                            type="button"
+                            onClick={() => setFlaggingFileId(null)}
+                            className="px-2.5 py-1 text-xs text-[#6B635A] hover:text-[#242220] cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!flagText.trim()}
+                            onClick={() => handleInlineConfirmFlag(file)}
+                            className="px-3 py-1.5 bg-[#C35832] hover:bg-[#A84725] disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg shadow-xs flex items-center gap-1 cursor-pointer transition-colors"
+                          >
+                            <span>Confirm Flag</span>
+                            <Send className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -407,15 +488,6 @@ export default function HierarchicalDiffViewer({
           );
         })
       )}
-
-      {/* Flag Comment Mandatory Modal */}
-      <FlagCommentModal
-        isOpen={Boolean(flaggingFile)}
-        onClose={() => setFlaggingFile(null)}
-        onConfirmFlag={handleConfirmFlag}
-        file={flaggingFile}
-        currentUser={currentUser}
-      />
     </div>
   );
 }
