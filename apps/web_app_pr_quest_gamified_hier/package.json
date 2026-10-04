@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "server": "node server/server.js",
-    "start": "node server/server.js",
+    "start": "npm run build && node server/server.js",
+    "dev:all": "node server/server.js & vite",
     "db:reset": "node -e \"const fs=require('fs'),path=require('path'),dir=path.resolve('data');if(fs.existsSync(dir)){fs.readdirSync(dir).forEach(f=>f.match(/\\.(db|json)$/)&&fs.unlinkSync(path.join(dir,f)));console.log('✅ Database reset successfully');}\""
   },
   "dependencies": {
