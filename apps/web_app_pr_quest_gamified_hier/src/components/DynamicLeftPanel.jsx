@@ -32,7 +32,8 @@ export default function DynamicLeftPanel({
   isLevelComplete,
   auditedSymbols = [],
   onToggleSymbolAudit,
-  onProceedNextLevel
+  onProceedNextLevel,
+  onAddXp
 }) {
   // Level 1: Spec & Intent Check
   if (level === 1) {
