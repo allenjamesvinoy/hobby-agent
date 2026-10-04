@@ -14,7 +14,8 @@ import {
   Check,
   Play,
   HelpCircle,
-  Sparkles
+  Sparkles,
+  Quote
 } from 'lucide-react';
 import FlashcardModal from './FlashcardModal';
 
@@ -43,7 +44,8 @@ export default function PaperDetail({
   onAddFlashcard,
   onDeleteFlashcard,
   onOpenPdf,
-  onUpdateMastery
+  onUpdateMastery,
+  onOpenCitation
 }) {
   const [activeSubTab, setActiveSubTab] = useState('notes');
   const [notes, setNotes] = useState(paper.notes || '');
@@ -160,6 +162,13 @@ export default function PaperDetail({
         </button>
 
         <div className="flex items-center gap-3 no-drag">
+          <button
+            onClick={() => onOpenCitation && onOpenCitation(paper.doi || '', paper.bibtex || '')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-medium border border-stone-200 transition-colors shadow-xs"
+            title="View or generate BibTeX citation"
+          >
+            <Quote className="w-3.5 h-3.5 text-stone-600" /> Cite / BibTeX
+          </button>
           {(paper.pdfUrl || paper.pdfFile) && (
             <button
               onClick={() => onOpenPdf(paper)}
@@ -412,7 +421,7 @@ export default function PaperDetail({
                     </p>
                   </div>
                   <span className="px-3 py-1 rounded-full bg-stone-100 border border-stone-200 text-stone-700 font-mono text-xs font-medium">
-                    {completedSectionsCount} of {sections.length} read • {sectionsProgressPercent}%
+                    {completedSectionsCount} of {sections.length} read â¢ {sectionsProgressPercent}%
                   </span>
                 </div>
 
