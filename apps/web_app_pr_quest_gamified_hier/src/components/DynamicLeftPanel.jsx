@@ -1,6 +1,5 @@
 import React from 'react';
 import SpecNav from './SpecNav';
-import MermaidViewer from './MermaidViewer';
 import { 
   ShieldCheck, 
   GitBranch, 
@@ -56,26 +55,23 @@ export default function DynamicLeftPanel({
 
     return (
       <div className="space-y-4">
-        {/* Excalidraw Architecture Diagram Launcher Card */}
-        <div className="bg-[#FFFDF9] border-2 border-[#C35832]/30 rounded-xl p-3.5 shadow-2xs">
+        {/* Architecture Diagram Launcher Card */}
+        <div className="bg-[#FFFDF9] border border-[#E6E0D5] hover:border-[#C35832]/40 rounded-xl p-3.5 shadow-2xs transition-all">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-[#C35832] flex items-center gap-1.5">
-              <span>📐</span> Excalidraw Architecture
-            </span>
-            <span className="text-[10px] font-bold bg-[#EBF7EE] text-[#2D6A4F] px-2 py-0.5 rounded border border-[#2D6A4F]/20">
-              Visual Net Diff
+              <span>📐</span> Architecture Diagram
             </span>
           </div>
 
           <p className="text-xs text-[#6B635A] mt-1.5 leading-snug">
-            Whiteboard sketch showing added, modified, and removed component flows.
+            Component flows showing added, modified, and removed services.
           </p>
 
           <button
             onClick={onOpenArchModal}
             className="w-full mt-3 py-2 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-lg shadow-2xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
           >
-            <span>Open Excalidraw Diagram</span>
+            <span>Open Architecture Diagram</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>

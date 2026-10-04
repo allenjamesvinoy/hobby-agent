@@ -175,7 +175,7 @@ export default function InfoSidePanel({ isOpen, onClose }) {
                   <span className="text-[10px] text-[#C35832] font-semibold">Stage 2/4</span>
                 </div>
                 <p className="text-[11px] text-[#6B635A] mt-1 leading-relaxed">
-                  Inspect the Excalidraw architecture diff modal (+ NEW, ~ MOD, - DEL). <strong>Audit all left-panel standard practices to unlock Level 3.</strong>
+                  Inspect the architecture diff modal (+ NEW, ~ MOD, - DEL). <strong>Audit all left-panel standard practices to unlock Level 3.</strong>
                 </p>
               </div>
 

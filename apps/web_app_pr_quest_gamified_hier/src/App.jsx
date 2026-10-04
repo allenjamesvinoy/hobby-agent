@@ -687,7 +687,7 @@ function AppContent() {
         )}
       </main>
 
-      {/* Excalidraw Style Architecture Diagram Modal */}
+      {/* Architecture Diagram Modal */}
       <ArchitectureDiagramModal
         isOpen={isDiagramModalOpen}
         onClose={() => setIsDiagramModalOpen(false)}
