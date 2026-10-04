@@ -609,9 +609,45 @@ function AppContent() {
               onOpenVerdict={() => setIsVerdictOpen(true)}
             />
           </div>
-        ) : (
+        ) : level === 3 ? (
+          /* Level 3: Only Middle (Diff Workspace) and Right (Function Inspector) Panel */
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* Left Panel: Sticky dynamic criteria */}
+            <section className="lg:col-span-7">
+              <HierarchicalDiffViewer 
+                files={files} 
+                selectedSpec={selectedSpec} 
+                activeFileId={activeFileId} 
+                setActiveFileId={setActiveFileId} 
+                onUpdateFileStatus={handleUpdateFileStatus} 
+                onAddComment={handleAddComment} 
+                onAddXp={handleAddXp}
+                level={level}
+                onInspectSymbol={(sym) => setActiveSymbolKey(sym)}
+                onOpenInfo={() => setIsInfoOpen(true)}
+                currentUser={currentUser}
+                onRemoveFlag={handleRemoveFlag}
+              />
+            </section>
+            <section className="lg:col-span-5 lg:sticky lg:top-4 self-start">
+              <FunctionInspectorPanel 
+                activeSymbolKey={activeSymbolKey}
+                symbolCatalog={initialSymbolCatalog}
+                onSelectSymbol={setActiveSymbolKey}
+                auditedSymbols={auditedSymbols}
+                onToggleSymbolAudit={handleToggleSymbolAudit}
+                onAddXp={handleAddXp}
+                onSelectFileByPath={handleSelectFileByPath}
+                isLevelComplete={isLevel3Complete}
+                onProceedNextLevel={() => {
+                  setUnlockedLevel(prev => Math.max(prev, 4));
+                  setLevel(4);
+                }}
+              />
+            </section>
+          </div>
+        ) : (
+          /* Level 1 & 2: Left and Middle Panel */
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             <section className="lg:col-span-4 lg:sticky lg:top-4 self-start space-y-4">
               <DynamicLeftPanel 
                 level={level}
@@ -650,38 +686,7 @@ function AppContent() {
                 }}
               />
             </section>
-
-            {level === 3 ? (
-              <>
-                <section className="lg:col-span-5">
-                  <HierarchicalDiffViewer 
-                    files={files} 
-                    selectedSpec={selectedSpec} 
-                    activeFileId={activeFileId} 
-                    setActiveFileId={setActiveFileId} 
-                    onUpdateFileStatus={handleUpdateFileStatus} 
-                    onAddComment={handleAddComment} 
-                    onAddXp={handleAddXp}
-                    level={level}
-                    onInspectSymbol={(sym) => setActiveSymbolKey(sym)}
-                    onOpenInfo={() => setIsInfoOpen(true)}
-                    currentUser={currentUser}
-                    onRemoveFlag={handleRemoveFlag}
-                  />
-                </section>
-                <section className="lg:col-span-3 lg:sticky lg:top-4 self-start">
-                  <FunctionInspectorPanel 
-                    activeSymbolKey={activeSymbolKey}
-                    symbolCatalog={initialSymbolCatalog}
-                    onAddXp={handleAddXp}
-                    onSelectFileByPath={handleSelectFileByPath}
-                    onAuditedChange={handleToggleSymbolAudit}
-                    auditedSymbols={auditedSymbols}
-                  />
-                </section>
-              </>
-            ) : (
-              <section className="lg:col-span-8">
+            <section className="lg:col-span-8">
                 <HierarchicalDiffViewer 
                   files={files} 
                   selectedSpec={selectedSpec} 
@@ -697,7 +702,6 @@ function AppContent() {
                   onRemoveFlag={handleRemoveFlag}
                 />
               </section>
-            )}
           </div>
         )}
       </main>

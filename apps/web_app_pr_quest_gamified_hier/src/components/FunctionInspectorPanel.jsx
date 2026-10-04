@@ -8,7 +8,10 @@ import {
   Layers, 
   Code2, 
   Columns, 
-  HelpCircle 
+  HelpCircle,
+  GitBranch,
+  CheckSquare,
+  Square
 } from 'lucide-react';
 import { symbolCatalog as defaultSymbolCatalog } from '../mockData.js';
 
@@ -16,13 +19,19 @@ export default function FunctionInspectorPanel({
   activeSymbolKey,
   symbolCatalog,
   onSelectSymbol,
-  onSelectFileByPath
+  onSelectFileByPath,
+  auditedSymbols = [],
+  onToggleSymbolAudit,
+  isLevelComplete = false,
+  onProceedNextLevel
 }) {
   const [selectedMatchId, setSelectedMatchId] = useState(null);
   const [viewFormat, setViewFormat] = useState('split'); // 'split' | 'modified' | 'original'
 
   const catalog = symbolCatalog || defaultSymbolCatalog || {};
+  const symbols = Object.keys(catalog);
   const activeSymbol = catalog[activeSymbolKey] || catalog['rotateSessionToken'] || Object.values(catalog)[0];
+  const auditedCount = auditedSymbols.length;
 
   if (!activeSymbol) {
     return (
@@ -38,22 +47,80 @@ export default function FunctionInspectorPanel({
 
   const matches = activeSymbol.matches || [];
   const currentMatch = matches.find(m => m.id === selectedMatchId) || matches[0];
+  const currentSymKey = activeSymbolKey || activeSymbol.name || 'rotateSessionToken';
+  const isCurrentAudited = auditedSymbols.includes(currentSymKey);
 
   return (
     <div className="sticky top-4 bg-white border border-[#E6E0D5] rounded-xl p-4 shadow-sm flex flex-col space-y-4 max-h-[calc(100vh-6rem)] overflow-y-auto">
-      {/* Header */}
+      {/* Top Banner: Blast Radius Matrix & Symbol Selector */}
+      <div className="border-b border-[#F1ECE4] pb-3 space-y-2.5">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-bold text-[#C35832] bg-[#FBEFEF] px-2.5 py-1 rounded-lg border border-[#C35832]/20 flex items-center gap-1.5 font-mono">
+            <GitBranch className="w-3.5 h-3.5" /> Blast Radius Matrix
+          </span>
+          <span className="text-xs text-[#4F6D56] font-bold bg-[#F4F8F5] px-2 py-0.5 rounded border border-[#4F6D56]/20">
+            {auditedCount}/{symbols.length} Audited (+25 XP)
+          </span>
+        </div>
+
+        {/* Symbol Selector Pills */}
+        <div className="flex flex-wrap gap-1.5 pt-1">
+          {symbols.map((symKey) => {
+            const isSelected = (currentSymKey === symKey);
+            const isAudited = auditedSymbols.includes(symKey);
+
+            return (
+              <button
+                key={symKey}
+                onClick={() => onSelectSymbol && onSelectSymbol(symKey)}
+                className={`px-2 py-1 rounded-lg text-xs font-mono transition-all flex items-center gap-1 cursor-pointer border ${
+                  isSelected 
+                    ? 'bg-[#C35832] text-white border-[#C35832] shadow-2xs font-bold' 
+                    : isAudited
+                      ? 'bg-[#F4F8F5] text-[#4F6D56] border-[#4F6D56]/30 hover:bg-white'
+                      : 'bg-[#F9F6F0] text-[#6B635A] border-[#E6E0D5] hover:bg-white'
+                }`}
+                title={`Click to inspect ${symKey}()`}
+              >
+                <span>{isAudited ? '✓' : '○'}</span>
+                <span>{symKey}()</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Symbol Details Header */}
       <div className="border-b border-[#F1ECE4] pb-3">
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-[#C35832] bg-[#FBEFEF] px-2 py-0.5 rounded border border-[#C35832]/20 flex items-center gap-1 font-mono">
             <FileCode className="w-3.5 h-3.5" /> {activeSymbol.type}
           </span>
-          <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
-            activeSymbol.isModified
-              ? 'bg-[#FBEFEF] text-[#C35832] border-[#C35832]/20'
-              : 'bg-[#F4F8F5] text-[#4F6D56] border-[#4F6D56]/20'
-          }`}>
-            {activeSymbol.isModified ? 'Modified in PR' : 'Original from Codebase'}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+              activeSymbol.isModified
+                ? 'bg-[#FBEFEF] text-[#C35832] border-[#C35832]/20'
+                : 'bg-[#F4F8F5] text-[#4F6D56] border-[#4F6D56]/20'
+            }`}>
+              {activeSymbol.isModified ? 'Modified in PR' : 'Original from Codebase'}
+            </span>
+
+            {/* Audit Toggle Button */}
+            {onToggleSymbolAudit && (
+              <button
+                onClick={() => onToggleSymbolAudit(currentSymKey)}
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-lg flex items-center gap-1 transition-all cursor-pointer border ${
+                  isCurrentAudited
+                    ? 'bg-[#4F6D56] text-white border-[#4F6D56]'
+                    : 'bg-white text-[#4F6D56] border-[#4F6D56]/40 hover:bg-[#F4F8F5]'
+                }`}
+                title="Mark this function call blast radius as audited"
+              >
+                <CheckCircle className="w-3 h-3" />
+                <span>{isCurrentAudited ? 'Audited' : 'Mark Audited'}</span>
+              </button>
+            )}
+          </div>
         </div>
 
         <h3 className="text-sm font-bold text-[#242220] font-mono mt-2 truncate">
@@ -217,6 +284,29 @@ export default function FunctionInspectorPanel({
           ))}
         </div>
       </div>
+
+      {/* Level 4 Progression Footer */}
+      {onProceedNextLevel && (
+        <div className="pt-3 border-t border-[#F1ECE4]">
+          <button
+            onClick={onProceedNextLevel}
+            disabled={!isLevelComplete}
+            className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-xs ${
+              isLevelComplete
+                ? 'bg-[#C35832] hover:bg-[#A84725] text-white cursor-pointer shadow-sm'
+                : 'bg-[#F1ECE4] text-[#8C827A] cursor-not-allowed opacity-75'
+            }`}
+          >
+            <span>Proceed to Level 4: Tests & Verdict</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+          {!isLevelComplete && (
+            <p className="text-[10px] text-center text-[#8C827A] mt-1.5 font-medium">
+              Audit all {symbols.length} functions above to unlock Level 4 ({auditedCount}/{symbols.length} complete)
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
