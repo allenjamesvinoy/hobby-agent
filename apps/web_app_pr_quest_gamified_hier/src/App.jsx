@@ -533,32 +533,9 @@ function AppContent() {
     }
   };
 
-  const levelMissions = {
-    1: {
-      title: "Level 1: Spec & Intent Alignment",
-      action: "Cross-check JIRA acceptance criteria against code changes.",
-      tip: "Check AC items on the left as you verify (+25 XP each)."
-    },
-    2: {
-      title: "Level 2: Core Architecture Audit",
-      action: "Audit Tier 1 core logic files and standard practices.",
-      tip: "Inspect the Excalidraw architecture diagram and review core diffs."
-    },
-    3: {
-      title: "Level 3: Blast Radius & Downstream Verification",
-      action: "Examine downstream consumers to ensure call-sites remain unbroken.",
-      tip: "Click function signatures in the diff to load implementation side-by-side."
-    },
-    4: {
-      title: "Level 4: Test Suite & Final Verdict",
-      action: "Verify test coverage against production logic and submit final review.",
-      tip: "Approve tests and submit final verdict (+100 XP)."
-    }
-  };
-
   return (
     <div className="min-h-screen bg-[#F9F6F0] flex flex-col">
-      {/* Header */}
+      {/* Header with Smart Slim Level Cards */}
       <QuestHeader 
         level={level} 
         setLevel={setLevel} 
@@ -578,215 +555,18 @@ function AppContent() {
         currentQueryTitle={currentQueryTitle}
         onOpenQuerySelector={() => setIsQuerySelectorOpen(true)}
         syncStatus={syncStatus}
+        completedAcCount={completedAcCount}
+        totalAcCount={totalAcCount}
+        completedStandardsCount={completedStandardsCount}
+        totalStandardsCount={totalStandardsCount}
+        completedSymbolsCount={completedSymbolsCount}
+        totalSymbolsCount={totalSymbolsCount}
+        isLevel1Complete={isLevel1Complete}
+        isLevel2Complete={isLevel2Complete}
+        isLevel3Complete={isLevel3Complete}
+        isLevel4Complete={isLevel4Complete}
+        isVerdictSubmitted={isVerdictSubmitted}
       />
-
-      {/* Active Mission & Transition Banner */}
-      <div className="max-w-7xl xl:max-w-[1440px] w-full mx-auto px-4 lg:px-6 pt-4">
-        <div className="bg-white border-l-4 border-[#C35832] border border-[#E6E0D5] rounded-xl p-4 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <span className="text-2xl mt-0.5">
-              {level === 1 && (isLevel1Complete ? '🌟' : '🎯')}
-              {level === 2 && (isLevel2Complete ? '🌟' : '🏛️')}
-              {level === 3 && (isLevel3Complete ? '🌟' : '💥')}
-              {level === 4 && (isLevel4Complete ? '🏆' : '🧪')}
-            </span>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-[#C35832] uppercase tracking-wider">
-                  {levelMissions[level]?.title || `Level ${level} Mission`}
-                </span>
-                <span className="text-[10px] bg-[#F1ECE4] text-[#6B635A] px-2 py-0.5 rounded font-bold">
-                  Stage {level}/4
-                </span>
-                {level === 1 && isLevel1Complete && (
-                  <span className="text-[10px] bg-[#F4F8F5] text-[#4F6D56] border border-[#4F6D56]/30 px-2 py-0.5 rounded font-bold">
-                    ✓ Level 1 Complete
-                  </span>
-                )}
-                {level === 2 && isLevel2Complete && (
-                  <span className="text-[10px] bg-[#F4F8F5] text-[#4F6D56] border border-[#4F6D56]/30 px-2 py-0.5 rounded font-bold">
-                    ✓ Level 2 Complete
-                  </span>
-                )}
-                {level === 3 && isLevel3Complete && (
-                  <span className="text-[10px] bg-[#F4F8F5] text-[#4F6D56] border border-[#4F6D56]/30 px-2 py-0.5 rounded font-bold">
-                    ✓ Level 3 Complete
-                  </span>
-                )}
-                {level === 4 && isLevel4Complete && (
-                  <span className="text-[10px] bg-[#F4F8F5] text-[#4F6D56] border border-[#4F6D56]/30 px-2 py-0.5 rounded font-bold">
-                    ✓ Review Quest Completed
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-[#242220] font-medium mt-1">
-                {levelMissions[level]?.action}
-              </p>
-              <p className="text-[11px] text-[#6B635A] mt-0.5">
-                💡 <span className="font-semibold">Milestone Goal:</span> {
-                  level === 1 ? `Verify all left-panel Acceptance Criteria (${completedAcCount}/${totalAcCount} checked)` :
-                  level === 2 ? `Audit all left-panel Architecture Standards (${completedStandardsCount}/${totalStandardsCount} audited)` :
-                  level === 3 ? `Audit all left-panel Symbol Blast Radii (${completedSymbolsCount}/${totalSymbolsCount} audited)` :
-                  `Approve all code files (${reviewedCount}/${files.length} reviewed) & Submit Final Verdict`
-                }
-              </p>
-            </div>
-          </div>
-
-          {/* Interactive Transition Actions */}
-          <div className="flex flex-wrap items-center gap-2.5 self-start md:self-center flex-shrink-0">
-            {level === 1 && (
-              isLevel1Complete ? (
-                <button
-                  onClick={() => {
-                    setUnlockedLevel(prev => Math.max(prev, 2));
-                    setLevel(2);
-                  }}
-                  className="px-3.5 py-2 bg-[#4F6D56] hover:bg-[#3D5442] text-white rounded-lg text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 animate-pulse cursor-pointer"
-                >
-                  <span>Proceed to Level 2: Core Architecture</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              ) : (
-                <div className="relative group">
-                  <button
-                    type="button"
-                    className="px-3.5 py-2 bg-[#F1ECE4] hover:bg-[#EAE4DC] border border-[#E6E0D5] text-[#8C827A] rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-not-allowed opacity-90 shadow-2xs"
-                  >
-                    <span>Proceed to Level 2 (Locked)</span>
-                    <span className="text-xs">🔒</span>
-                  </button>
-
-                  {/* Level 1 Checklist Guide Hover Popover */}
-                  <div className="absolute right-0 top-full mt-2 w-72 bg-white border border-[#E6E0D5] rounded-xl p-3.5 shadow-xl z-50 invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all pointer-events-none">
-                    <div className="flex items-center gap-1.5 font-bold text-xs text-[#242220] pb-2 border-b border-[#F1ECE4]">
-                      <Award className="w-3.5 h-3.5 text-[#D08A29]" />
-                      <span>Level 1 Checklist Guide</span>
-                    </div>
-                    <ul className="text-[11px] text-[#6B635A] mt-2 space-y-1.5 list-disc list-inside leading-snug">
-                      <li>Check off each AC as you verify code in the middle panel.</li>
-                      <li>Click sliced AC filter pills above to isolate relevant diff hunks.</li>
-                    </ul>
-                    <div className="mt-2.5 pt-2 border-t border-[#F1ECE4] flex items-center justify-between text-[10px]">
-                      <span className="text-[#C35832] font-bold">
-                        {completedAcCount}/{totalAcCount} ACs completed
-                      </span>
-                      <span className="text-[#6B635A]">
-                        Complete all to unlock
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )
-            )}
-
-            {level === 2 && (
-              isLevel2Complete ? (
-                <button
-                  onClick={() => {
-                    setUnlockedLevel(prev => Math.max(prev, 3));
-                    setLevel(3);
-                  }}
-                  className="px-3.5 py-2 bg-[#4F6D56] hover:bg-[#3D5442] text-white rounded-lg text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 animate-pulse cursor-pointer"
-                >
-                  <span>Proceed to Level 3: Blast Radius</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              ) : (
-                <div className="relative group">
-                  <button
-                    type="button"
-                    className="px-3.5 py-2 bg-[#F1ECE4] hover:bg-[#EAE4DC] border border-[#E6E0D5] text-[#8C827A] rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-not-allowed opacity-90 shadow-2xs"
-                  >
-                    <span>Proceed to Level 3 (Locked)</span>
-                    <span className="text-xs">🔒</span>
-                  </button>
-
-                  <div className="absolute right-0 top-full mt-2 w-72 bg-white border border-[#E6E0D5] rounded-xl p-3.5 shadow-xl z-50 invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all pointer-events-none">
-                    <div className="flex items-center gap-1.5 font-bold text-xs text-[#242220] pb-2 border-b border-[#F1ECE4]">
-                      <Award className="w-3.5 h-3.5 text-[#D08A29]" />
-                      <span>Level 2 Checklist Guide</span>
-                    </div>
-                    <ul className="text-[11px] text-[#6B635A] mt-2 space-y-1.5 list-disc list-inside leading-snug">
-                      <li>Audit each Tier 1 architecture standard from docs/standards.</li>
-                      <li>Inspect the net architectural diagram and verify state flows.</li>
-                    </ul>
-                    <div className="mt-2.5 pt-2 border-t border-[#F1ECE4] flex items-center justify-between text-[10px]">
-                      <span className="text-[#C35832] font-bold">
-                        {completedStandardsCount}/{totalStandardsCount} Standards audited
-                      </span>
-                      <span className="text-[#6B635A]">
-                        Complete all to unlock
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )
-            )}
-
-            {level === 3 && (
-              isLevel3Complete ? (
-                <button
-                  onClick={() => {
-                    setUnlockedLevel(prev => Math.max(prev, 4));
-                    setLevel(4);
-                  }}
-                  className="px-3.5 py-2 bg-[#4F6D56] hover:bg-[#3D5442] text-white rounded-lg text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 animate-pulse cursor-pointer"
-                >
-                  <span>Proceed to Level 4: Tests & Verdict</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              ) : (
-                <div className="relative group">
-                  <button
-                    type="button"
-                    className="px-3.5 py-2 bg-[#F1ECE4] hover:bg-[#EAE4DC] border border-[#E6E0D5] text-[#8C827A] rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-not-allowed opacity-90 shadow-2xs"
-                  >
-                    <span>Proceed to Level 4 (Locked)</span>
-                    <span className="text-xs">🔒</span>
-                  </button>
-
-                  <div className="absolute right-0 top-full mt-2 w-72 bg-white border border-[#E6E0D5] rounded-xl p-3.5 shadow-xl z-50 invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all pointer-events-none">
-                    <div className="flex items-center gap-1.5 font-bold text-xs text-[#242220] pb-2 border-b border-[#F1ECE4]">
-                      <Award className="w-3.5 h-3.5 text-[#D08A29]" />
-                      <span>Level 3 Checklist Guide</span>
-                    </div>
-                    <ul className="text-[11px] text-[#6B635A] mt-2 space-y-1.5 list-disc list-inside leading-snug">
-                      <li>Audit function call blast radii in the right inspector panel.</li>
-                      <li>Verify downstream consumer integrations and imports.</li>
-                    </ul>
-                    <div className="mt-2.5 pt-2 border-t border-[#F1ECE4] flex items-center justify-between text-[10px]">
-                      <span className="text-[#C35832] font-bold">
-                        {completedSymbolsCount}/{totalSymbolsCount} Symbols audited
-                      </span>
-                      <span className="text-[#6B635A]">
-                        Complete all to unlock
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )
-            )}
-
-            {level === 4 && (
-              <button
-                onClick={() => setIsVerdictOpen(true)}
-                className={`px-3.5 py-2 rounded-lg text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer ${
-                  isVerdictSubmitted
-                    ? 'bg-[#4F6D56] text-white'
-                    : 'bg-[#C35832] hover:bg-[#A84725] text-white'
-                }`}
-              >
-                <span>{isVerdictSubmitted ? '✓ Review Verdict Submitted' : '🏆 Submit Final Review Verdict'}</span>
-              </button>
-            )}
-
-            <span className="text-[10px] bg-[#F1ECE4] text-[#6B635A] px-2.5 py-1.5 rounded font-bold border border-[#E6E0D5]">
-              Max Unlocked: Level {unlockedLevel}/4
-            </span>
-          </div>
-        </div>
-      </div>
 
       {/* Main Workspace: Dynamically adapts per level */}
       <main className="flex-1 max-w-7xl xl:max-w-[1440px] w-full mx-auto p-4 lg:p-6">

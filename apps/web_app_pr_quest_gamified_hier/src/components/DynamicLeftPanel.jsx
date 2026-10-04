@@ -11,7 +11,8 @@ import {
   AlertCircle,
   Sparkles,
   ArrowRight,
-  BookOpen
+  BookOpen,
+  Award
 } from 'lucide-react';
 
 export default function DynamicLeftPanel({
@@ -144,11 +145,54 @@ export default function DynamicLeftPanel({
             <span>+25 XP per audited item</span>
             <button
               onClick={onOpenArchModal}
-              className="text-[#C35832] font-semibold hover:underline flex items-center gap-1"
+              className="text-[#C35832] font-semibold hover:underline flex items-center gap-1 cursor-pointer"
             >
-              <span>Inspect Architecture Topology</span>
+              <span>Inspect Architecture</span>
               <ArrowRight className="w-3 h-3" />
             </button>
+          </div>
+
+          {/* Level 2 Next Progression Action with Hover Guide Popover */}
+          <div className="mt-3 pt-3 border-t border-[#E6E0D5]">
+            {isLevelComplete ? (
+              <button
+                onClick={onProceedNextLevel}
+                className="w-full py-2.5 px-3 bg-[#4F6D56] hover:bg-[#3D5442] text-white rounded-xl text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-1.5 animate-pulse cursor-pointer"
+              >
+                <span>Proceed to Level 3: Blast Radius</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            ) : (
+              <div className="relative group">
+                <button
+                  type="button"
+                  className="w-full py-2.5 px-3 bg-[#F9F6F0] hover:bg-[#F1ECE4] border border-[#E6E0D5] text-[#8C827A] rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-not-allowed opacity-90 shadow-2xs"
+                >
+                  <span>Next: Level 3 (Locked)</span>
+                  <span className="text-xs">🔒</span>
+                </button>
+
+                {/* Level 2 Checklist Guide Popover */}
+                <div className="absolute left-0 right-0 bottom-full mb-2 bg-white border border-[#E6E0D5] rounded-xl p-3.5 shadow-xl z-50 invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all pointer-events-none">
+                  <div className="flex items-center gap-1.5 font-bold text-xs text-[#242220] pb-2 border-b border-[#F1ECE4]">
+                    <Award className="w-3.5 h-3.5 text-[#D08A29]" />
+                    <span>Level 2 Checklist Guide</span>
+                  </div>
+                  <ul className="text-[11px] text-[#6B635A] mt-2 space-y-1.5 list-disc list-inside leading-snug">
+                    <li>Audit each Tier 1 architecture standard from docs/standards.</li>
+                    <li>Inspect the net architectural diagram and verify state flows.</li>
+                  </ul>
+                  <div className="mt-2.5 pt-2 border-t border-[#F1ECE4] flex items-center justify-between text-[10px]">
+                    <span className="text-[#C35832] font-bold">
+                      {verifiedCount}/{architectureStandards.length} Standards audited
+                    </span>
+                    <span className="text-[#6B635A]">
+                      Audit all to unlock Level 3
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -267,6 +311,49 @@ export default function DynamicLeftPanel({
               <span className="text-[10px] text-[#D08A29] font-bold">Tier 2</span>
             </button>
           </div>
+        </div>
+
+        {/* Level 3 Next Progression Action with Hover Guide Popover */}
+        <div className="pt-3 border-t border-[#E6E0D5]">
+          {isLevelComplete ? (
+            <button
+              onClick={onProceedNextLevel}
+              className="w-full py-2.5 px-3 bg-[#4F6D56] hover:bg-[#3D5442] text-white rounded-xl text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-1.5 animate-pulse cursor-pointer"
+            >
+              <span>Proceed to Level 4: Tests & Verdict</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          ) : (
+            <div className="relative group">
+              <button
+                type="button"
+                className="w-full py-2.5 px-3 bg-[#F9F6F0] hover:bg-[#F1ECE4] border border-[#E6E0D5] text-[#8C827A] rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-not-allowed opacity-90 shadow-2xs"
+              >
+                <span>Next: Level 4 (Locked)</span>
+                <span className="text-xs">🔒</span>
+              </button>
+
+              {/* Level 3 Checklist Guide Popover */}
+              <div className="absolute left-0 right-0 bottom-full mb-2 bg-white border border-[#E6E0D5] rounded-xl p-3.5 shadow-xl z-50 invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all pointer-events-none">
+                <div className="flex items-center gap-1.5 font-bold text-xs text-[#242220] pb-2 border-b border-[#F1ECE4]">
+                  <Award className="w-3.5 h-3.5 text-[#D08A29]" />
+                  <span>Level 3 Checklist Guide</span>
+                </div>
+                <ul className="text-[11px] text-[#6B635A] mt-2 space-y-1.5 list-disc list-inside leading-snug">
+                  <li>Audit function call blast radii in the right inspector panel.</li>
+                  <li>Verify downstream consumer integrations and imports.</li>
+                </ul>
+                <div className="mt-2.5 pt-2 border-t border-[#F1ECE4] flex items-center justify-between text-[10px]">
+                  <span className="text-[#C35832] font-bold">
+                    {auditedCount}/{symbols.length} Symbols audited
+                  </span>
+                  <span className="text-[#6B635A]">
+                    Audit all to unlock Level 4
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );

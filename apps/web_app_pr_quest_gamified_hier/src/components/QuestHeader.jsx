@@ -19,13 +19,48 @@ export default function QuestHeader({
   currentQueryId = 'PR-101',
   currentQueryTitle = 'Session Token Rotation',
   onOpenQuerySelector,
-  syncStatus = 'saved' // 'saved' | 'syncing' | 'offline'
+  syncStatus = 'saved', // 'saved' | 'syncing' | 'offline'
+  completedAcCount = 0,
+  totalAcCount = 5,
+  completedStandardsCount = 0,
+  totalStandardsCount = 4,
+  completedSymbolsCount = 0,
+  totalSymbolsCount = 3,
+  isLevel1Complete = false,
+  isLevel2Complete = false,
+  isLevel3Complete = false,
+  isLevel4Complete = false,
+  isVerdictSubmitted = false
 }) {
   const levels = [
-    { num: 1, name: "Spec & Intent Check", desc: "Verify changes map to JIRA criteria" },
-    { num: 2, name: "Architectural & Core Logic", desc: "Inspect primary abstractions & state" },
-    { num: 3, name: "Blast Radius & Impact", desc: "Validate cross-file dependencies" },
-    { num: 4, name: "Tests & Final Verdict", desc: "Review unit tests & submit review" }
+    { 
+      num: 1, 
+      name: "1. Spec & Intent", 
+      desc: "Verify JIRA criteria",
+      statsText: `${completedAcCount}/${totalAcCount} ACs`,
+      isDone: unlockedLevel > 1 || isLevel1Complete
+    },
+    { 
+      num: 2, 
+      name: "2. Core Architecture", 
+      desc: "Tier 1 logic & standards",
+      statsText: `${completedStandardsCount}/${totalStandardsCount} Audited`,
+      isDone: unlockedLevel > 2 || isLevel2Complete
+    },
+    { 
+      num: 3, 
+      name: "3. Blast Radius", 
+      desc: "Downstream call-sites",
+      statsText: `${completedSymbolsCount}/${totalSymbolsCount} Audited`,
+      isDone: unlockedLevel > 3 || isLevel3Complete
+    },
+    { 
+      num: 4, 
+      name: "4. Tests & Verdict", 
+      desc: "Unit tests & sign-off",
+      statsText: `${reviewedCount}/${totalFiles} Reviewed`,
+      isDone: isVerdictSubmitted || (unlockedLevel >= 4 && isLevel4Complete)
+    }
   ];
 
   return (
@@ -162,13 +197,12 @@ export default function QuestHeader({
         </div>
       </div>
 
-      {/* Level Selector Tabs */}
+      {/* Option B: Smart Slim Level Selector Tabs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-3 pt-3 border-t border-[#F1ECE4]">
         {levels.map((lvl) => {
           const isActive = level === lvl.num;
-          const isCompleted = unlockedLevel > lvl.num;
+          const isCompleted = lvl.isDone;
           const isLocked = lvl.num > unlockedLevel;
-          const isLevel2Locked = lvl.num === 2 && isLocked;
 
           return (
             <div key={lvl.num} className="relative group">
@@ -178,26 +212,40 @@ export default function QuestHeader({
                     setLevel(lvl.num);
                   }
                 }}
-                className={`w-full text-left p-2.5 rounded-lg border transition-all ${
+                className={`w-full text-left px-3 py-2 rounded-xl border transition-all ${
                   isActive 
-                    ? 'bg-[#FFFDF9] border-[#D08A29] shadow-sm ring-2 ring-[#D08A29] cursor-default' 
+                    ? 'bg-[#FFFDF9] border-[#C35832] ring-2 ring-[#C35832]/25 shadow-xs cursor-default' 
                     : isCompleted
                       ? 'bg-[#F4F8F5] border-[#4F6D56]/30 text-[#4F6D56] hover:bg-white cursor-pointer'
                       : isLocked
-                        ? 'bg-[#F9F6F0]/60 border-[#E6E0D5] opacity-60 cursor-not-allowed'
+                        ? 'bg-[#F9F6F0]/60 border-[#E6E0D5] opacity-65 cursor-not-allowed'
                         : 'bg-[#F9F6F0] border-[#E6E0D5] hover:bg-white cursor-pointer'
                 }`}
               >
-                <div className="flex items-center justify-between">
-                  <span className={`text-xs font-bold uppercase tracking-wider ${
-                    isActive ? 'text-[#D08A29]' : isCompleted ? 'text-[#4F6D56]' : 'text-[#6B635A]'
+                <div className="flex items-center justify-between gap-1.5">
+                  <span className={`text-xs font-bold truncate ${
+                    isActive ? 'text-[#C35832]' : isCompleted ? 'text-[#4F6D56]' : 'text-[#242220]'
                   }`}>
-                    Level {lvl.num}
+                    {lvl.name}
                   </span>
-                  {isCompleted && <CheckCircle className="w-4 h-4 text-[#4F6D56]" />}
-                  {isLocked && <span className="text-[10px] text-[#6B635A] bg-[#F1ECE4] px-1.5 py-0.5 rounded font-medium">🔒 Locked</span>}
+                  {isCompleted ? (
+                    <span className="text-[10px] font-bold bg-[#4F6D56] text-white px-2 py-0.5 rounded-full flex items-center gap-1 shadow-2xs flex-shrink-0">
+                      <CheckCircle className="w-3 h-3" /> Done
+                    </span>
+                  ) : isLocked ? (
+                    <span className="text-[9px] text-[#8C827A] bg-[#F1ECE4] px-1.5 py-0.5 rounded font-semibold flex items-center gap-1 flex-shrink-0">
+                      🔒 Locked
+                    </span>
+                  ) : (
+                    <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full border flex-shrink-0 ${
+                      isActive 
+                        ? 'bg-[#FFF8F6] text-[#C35832] border-[#C35832]/30' 
+                        : 'bg-white text-[#6B635A] border-[#E6E0D5]'
+                    }`}>
+                      {lvl.statsText}
+                    </span>
+                  )}
                 </div>
-                <div className="font-semibold text-xs text-[#242220] mt-0.5 truncate">{lvl.name}</div>
                 <div className="text-[10px] text-[#6B635A] truncate mt-0.5">{lvl.desc}</div>
               </button>
 
