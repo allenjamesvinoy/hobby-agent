@@ -110,7 +110,7 @@ function AppContent() {
   const [customDiagramModel, setCustomDiagramModel] = useState(null);
   const [customSymbolCatalog, setCustomSymbolCatalog] = useState(null);
   const [architectureSummary, setArchitectureSummary] = useState('');
-  const [isAiPopulating, setIsAiPopulating] = useState(false);
+  const [hasUploadedArchitecture, setHasUploadedArchitecture] = useState(false);
   const [isLinkingIssue, setIsLinkingIssue] = useState(false);
   const [isAnalyzingArchitecture, setIsAnalyzingArchitecture] = useState(false);
 
@@ -255,10 +255,14 @@ function AppContent() {
 
       if (queryDocs && Array.isArray(queryDocs) && queryDocs.length > 0) {
         setRepoDocs(queryDocs);
+        const hasUploadedDoc = queryDocs.some(d => (d.role === 'architecture' || d.path?.toLowerCase().endsWith('architecture.md')) && d.uploaded === true);
+        setHasUploadedArchitecture(hasUploadedDoc);
       } else if (!isGh && queryId === 'PR-101') {
         setRepoDocs(initialReferences);
+        setHasUploadedArchitecture(false);
       } else {
         setRepoDocs([]);
+        setHasUploadedArchitecture(false);
       }
 
       if (queryMeta) setGithubMeta(queryMeta);
@@ -482,11 +486,17 @@ function AppContent() {
   };
 
   const isGh = String(currentQueryId).startsWith('GH-');
-  const hasArchitectureDoc = Boolean(
-    repoDocs.some(d => (d.role === 'architecture' || d.path?.toLowerCase().endsWith('architecture.md')) && d.content && d.content.trim()) ||
-    (!isGh && currentQueryId === 'PR-101' && architectureText && architectureText.trim()) ||
-    (architectureText && architectureText !== defaultArchitecture && architectureText.trim())
+  const hasUploadedMd = Boolean(
+    hasUploadedArchitecture ||
+    repoDocs.some(d => (d.role === 'architecture' || d.path?.toLowerCase().endsWith('architecture.md')) && d.uploaded === true)
   );
+  const hasArchitectureDoc = isGh
+    ? hasUploadedMd
+    : Boolean(
+        hasUploadedMd ||
+        (currentQueryId === 'PR-101' && architectureText && architectureText.trim()) ||
+        (architectureText && architectureText !== defaultArchitecture && architectureText.trim())
+      );
 
   // Milestone objective calculations
   const completedAcCount = (jiraTicket.criteria || []).filter(ac => ac.completed).length;
@@ -543,7 +553,11 @@ function AppContent() {
     setGithubError('');
     setSyncStatus('syncing');
 
-    const res = await api.fetchGitHubPullRequest(pr.owner, pr.repo, pr.number);
+    const res = await api.fetchGitHubPullRequest(pr.owner, pr.repo, pr.number, {
+      head: pr.head,
+      base: pr.base,
+      title: pr.title
+    });
     setGithubPrLoading(false);
 
     if (!res.success) {
@@ -632,6 +646,7 @@ function AppContent() {
       setXp(0);
       setAwardedActions([]);
       setSelectedSpec('ALL');
+      setHasUploadedArchitecture(false);
       setSyncStatus('saved');
 
       if (nextSymbolCatalog && Object.keys(nextSymbolCatalog).length > 0) {
@@ -732,6 +747,7 @@ function AppContent() {
   const handleUploadArchitecture = async (content, fileName = 'architecture.md') => {
     setIsAnalyzingArchitecture(true);
     setArchitectureText(content);
+    setHasUploadedArchitecture(true);
     const res = await api.uploadArchitectureDoc(currentQueryId, fileName, content);
     setIsAnalyzingArchitecture(false);
     if (res.success) {
@@ -749,7 +765,7 @@ function AppContent() {
       }
       setRepoDocs(prev => {
         const withoutArch = prev.filter(d => d.role !== 'architecture' && d.path !== fileName);
-        return [{ name: fileName, path: fileName, role: 'architecture', content, rawSize: content.length }, ...withoutArch];
+        return [{ name: fileName, path: fileName, role: 'architecture', content, rawSize: content.length, uploaded: true }, ...withoutArch];
       });
       setQuestLogs(prev => [
         { id: Date.now(), text: `🏛️ Analyzed ${fileName}: Generated ${res.standards?.length || 0} architectural standards`, timestamp: new Date().toLocaleTimeString() },
@@ -758,25 +774,6 @@ function AppContent() {
       return { success: true, count: res.standards?.length || 0 };
     }
     return { success: false, error: res.error || 'Failed to analyze architecture' };
-  };
-
-  const handleTriggerAiPopulate = async () => {
-    setIsAiPopulating(true);
-    const res = await api.triggerAiPopulate(currentQueryId);
-    setIsAiPopulating(false);
-    if (res.success && res.data) {
-      if (res.data.standards) setStandards(res.data.standards);
-      if (res.data.architectureDiagramModel) setCustomDiagramModel(res.data.architectureDiagramModel);
-      if (res.data.testSuites) setTestSuites(res.data.testSuites);
-      if (res.data.symbolCatalog) setCustomSymbolCatalog(res.data.symbolCatalog);
-      if (res.data.architectureSummary) setArchitectureSummary(res.data.architectureSummary);
-      setQuestLogs(prev => [
-        { id: Date.now(), text: `✨ Gemini AI Populated: Standards, Blast Radius & Test Suites synced!`, timestamp: new Date().toLocaleTimeString() },
-        ...prev
-      ].slice(0, 5));
-      return { success: true };
-    }
-    return { success: false, error: res.error || 'Failed to AI populate review metadata' };
   };
 
   const handleSaveArchitecture = (archText, nextDocs) => {
@@ -1042,8 +1039,6 @@ function AppContent() {
         onPrevGithubPr={handlePrevGithubPr}
         onNextGithubPr={handleNextGithubPr}
         githubStatus={githubStatus}
-        onTriggerAiPopulate={handleTriggerAiPopulate}
-        isAiPopulating={isAiPopulating}
         hasArchitectureDoc={hasArchitectureDoc}
       />
 
@@ -1058,8 +1053,6 @@ function AppContent() {
               onUpdateFileStatus={handleUpdateFileStatus}
               onAddXp={handleAddXp}
               onOpenVerdict={() => setIsVerdictOpen(true)}
-              onTriggerAiPopulate={handleTriggerAiPopulate}
-              isAiPopulating={isAiPopulating}
             />
           </div>
         ) : level === 3 ? (
@@ -1164,6 +1157,8 @@ function AppContent() {
         onSelectNodeFile={handleSelectFileByPath}
         onAddXp={handleAddXp}
         hasArchitectureDoc={hasArchitectureDoc}
+        isGithubQuery={isGh}
+        hasUploadedMd={hasUploadedMd}
         onUploadArchitecture={handleUploadArchitecture}
       />
 

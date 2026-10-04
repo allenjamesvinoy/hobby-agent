@@ -11,6 +11,16 @@ import {
   extractMarkdownChecklist 
 } from './heuristicSynthesizer.js';
 import { chunkLargeFiles } from './locChunker.js';
+import { execSync } from 'node:child_process';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { db } from './db.js';
+import { buildSymbolCatalogFromFiles } from '../src/utils/buildSymbolCatalog.js';
+import { resolveGeminiApiKey, deriveSymbolsAndTests } from './gemini.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const GITHUB_API = 'https://api.github.com';
 const MAX_CRITERIA = 8;
@@ -75,7 +85,7 @@ export function parseRepoInput(input) {
 }
 
 function resolveAccessToken(accessToken) {
-  return accessToken || process.env.GITHUB_TOKEN || null;
+  return accessToken || db.getSetting?.('github_token') || process.env.GITHUB_TOKEN || null;
 }
 
 function githubHeaders(accessToken) {
@@ -164,32 +174,142 @@ export function parseGithubQueryId(queryId) {
  * List open pull requests for a repo (paginates up to 100).
  * Uses linked-user token when provided; otherwise public/unauthenticated (or GITHUB_TOKEN).
  */
-export async function listOpenPullRequests(owner, repo, accessToken) {
-  const pulls = await githubFetch(
-    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls?state=open&per_page=100&sort=updated&direction=desc`,
-    accessToken
-  );
+export function findLocalGitRepo(owner, repo) {
+  const candidates = [
+    process.cwd(),
+    path.resolve(__dirname, '../../..'),
+    path.resolve(__dirname, '../../../..'),
+    '/Users/allenjamesvinoy/.gemini/antigravity/scratch/hobby-agent-incubator'
+  ];
+  for (const dir of candidates) {
+    try {
+      if (!fs.existsSync(path.join(dir, '.git'))) continue;
+      const remoteOut = execSync('git remote -v', {
+        cwd: dir,
+        env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null' },
+        encoding: 'utf8'
+      });
+      if (repo && remoteOut.includes(repo)) {
+        return dir;
+      }
+      return dir;
+    } catch (_) {}
+  }
+  return null;
+}
 
-  return pulls.map((pr) => ({
-    number: pr.number,
-    title: pr.title,
-    body: pr.body || '',
-    htmlUrl: pr.html_url,
-    user: pr.user?.login || 'unknown',
-    avatarUrl: pr.user?.avatar_url || null,
-    createdAt: pr.created_at,
-    updatedAt: pr.updated_at,
-    draft: Boolean(pr.draft),
-    labels: (pr.labels || []).map((l) => l.name),
-    base: pr.base?.ref || 'main',
-    head: pr.head?.ref || '',
-    additions: pr.additions ?? null,
-    deletions: pr.deletions ?? null,
-    changedFiles: pr.changed_files ?? null,
-    queryId: `GH-${owner}/${repo}#${pr.number}`,
-    owner,
-    repo
-  }));
+export function listLocalGitPullRequests(owner = 'allenjamesvinoy', repo = 'hobby-agent') {
+  const repoDir = findLocalGitRepo(owner, repo);
+  if (!repoDir) return [];
+  const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null' };
+
+  try {
+    const branchesRaw = execSync('git branch -a', { cwd: repoDir, env, encoding: 'utf8' });
+    const lines = branchesRaw.split('\n').map(l => l.trim().replace(/^[* ]\s*/, '')).filter(Boolean);
+    const prs = [];
+    const seenNumbers = new Set();
+
+    for (const b of lines) {
+      if (b.includes('->') || b.includes('feat/') || b === 'main' || b === 'remotes/origin/main') continue;
+
+      let prNumber = null;
+      let head = b.replace(/^remotes\/origin\//, '');
+      let title = '';
+
+      const prMatch = head.match(/^pr-(\d+)$/i);
+      const ideaMatch = head.match(/^idea-issue-(\d+)(?:-.*)?$/i);
+
+      if (prMatch) {
+        prNumber = parseInt(prMatch[1], 10);
+      } else if (ideaMatch) {
+        const issueNum = parseInt(ideaMatch[1], 10);
+        prNumber = issueNum + 1;
+      }
+
+      if (!prNumber || seenNumbers.has(prNumber)) continue;
+      seenNumbers.add(prNumber);
+
+      try {
+        const commitSubject = execSync('git log -n 1 --format="%s" ' + b, { cwd: repoDir, env, encoding: 'utf8' }).trim();
+        title = commitSubject.replace(/^feat:\s*autonomous implementation for\s*['"]?|['"]?$/gi, '').trim() || (`PR #${prNumber}`);
+        if (ideaMatch) {
+          title = `🤖 [Agent PR] ${title}`;
+        }
+      } catch (_) {
+        title = `PR #${prNumber}`;
+      }
+
+      prs.push({
+        number: prNumber,
+        title,
+        body: '',
+        htmlUrl: `https://github.com/${owner}/${repo}/pull/${prNumber}`,
+        user: ideaMatch ? 'github-actions[bot]' : 'local-git',
+        avatarUrl: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        draft: false,
+        labels: ['local-git-synced'],
+        base: 'main',
+        head,
+        additions: null,
+        deletions: null,
+        changedFiles: null,
+        queryId: `GH-${owner}/${repo}#${prNumber}`,
+        owner,
+        repo,
+        isLocalFallback: true
+      });
+    }
+
+    return prs.sort((a, b) => b.number - a.number);
+  } catch (err) {
+    console.warn('[github-local] Failed to list local git PRs:', err.message);
+    return [];
+  }
+}
+
+/**
+ * List open pull requests for a repo (paginates up to 100).
+ * Uses linked-user token when provided; otherwise public/unauthenticated (or GITHUB_TOKEN).
+ * Seamlessly falls back to local git branches when rate-limited.
+ */
+export async function listOpenPullRequests(owner, repo, accessToken) {
+  try {
+    const pulls = await githubFetch(
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls?state=open&per_page=100&sort=updated&direction=desc`,
+      accessToken
+    );
+
+    return pulls.map((pr) => ({
+      number: pr.number,
+      title: pr.title,
+      body: pr.body || '',
+      htmlUrl: pr.html_url,
+      user: pr.user?.login || 'unknown',
+      avatarUrl: pr.user?.avatar_url || null,
+      createdAt: pr.created_at,
+      updatedAt: pr.updated_at,
+      draft: Boolean(pr.draft),
+      labels: (pr.labels || []).map((l) => l.name),
+      base: pr.base?.ref || 'main',
+      head: pr.head?.ref || '',
+      additions: pr.additions ?? null,
+      deletions: pr.deletions ?? null,
+      changedFiles: pr.changed_files ?? null,
+      queryId: `GH-${owner}/${repo}#${pr.number}`,
+      owner,
+      repo
+    }));
+  } catch (err) {
+    console.warn(`[github] listOpenPullRequests remote call failed (${err.message}). Checking local git branches...`);
+    const localPrs = listLocalGitPullRequests(owner, repo);
+    if (localPrs.length > 0) {
+      console.log(`[github] Successfully fell back to ${localPrs.length} local git PR branches.`);
+      return localPrs;
+    }
+    throw err;
+  }
 }
 
 /**
@@ -451,10 +571,52 @@ export function buildCriteriaFromDocs(prTitle, bodyPreview, repoDocs) {
   ];
 }
 
+export function extractStandardsFromMarkdown(md, docPath = 'docs/architecture.md') {
+  if (!md || typeof md !== 'string') return [];
+  const standards = [];
+  const lines = md.split('\n');
+  let currentStd = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    const headingMatch = line.match(/^#{1,4}\s+(STD-[\w\d]+|Standard\s+[\w\d]+|RULE-[\w\d]+)[:\s]+(.*)/i);
+    if (headingMatch) {
+      if (currentStd) standards.push(currentStd);
+      currentStd = {
+        id: headingMatch[1].toUpperCase(),
+        standardFile: docPath,
+        category: 'Architecture Standard',
+        title: headingMatch[2].trim() || headingMatch[1],
+        description: '',
+        completed: false
+      };
+      continue;
+    }
+
+    if (currentStd) {
+      if (/^#{1,3}\s+/.test(line)) {
+        standards.push(currentStd);
+        currentStd = null;
+      } else if (line) {
+        currentStd.description = (currentStd.description ? currentStd.description + ' ' : '') + line;
+      }
+    }
+  }
+  if (currentStd) standards.push(currentStd);
+  return standards;
+}
+
 export function buildStandardsFromDocs(repoDocs) {
   const byRole = Object.fromEntries(repoDocs.map((d) => [d.role, d]));
   const arch = byRole.architecture;
   const context = byRole.context;
+
+  if (arch && arch.content) {
+    const extracted = extractStandardsFromMarkdown(arch.content, arch.path || 'docs/architecture.md');
+    if (extracted.length > 0) {
+      return extracted.slice(0, MAX_STANDARDS);
+    }
+  }
 
   let source = arch;
   let items = arch
@@ -561,15 +723,296 @@ export async function fetchGithubIssue(owner, repo, issueNumber, accessToken) {
   }
 }
 
+export function resolveLocalGitBranch(repoDir, number, headOpt) {
+  const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null' };
+  try {
+    const allBranches = execSync('git branch -a', { cwd: repoDir, env, encoding: 'utf8' })
+      .split('\n')
+      .map(b => b.trim().replace(/^[* ]\s*/, '').replace(/^remotes\/origin\//, ''))
+      .filter(b => b && !b.includes('->'));
+
+    const unique = Array.from(new Set(allBranches));
+
+    if (headOpt) {
+      const cleanHead = headOpt.replace(/^origin\//, '');
+      if (unique.includes(cleanHead)) return cleanHead;
+    }
+    if (unique.includes(`pr-${number}`)) return `pr-${number}`;
+    if (unique.includes(`idea-issue-${number}`)) return `idea-issue-${number}`;
+    if (unique.includes(`idea-issue-${number - 1}`)) return `idea-issue-${number - 1}`;
+
+    const matched = unique.find(b =>
+      b === `pr-${number}` ||
+      b.startsWith(`idea-issue-${number - 1}`) ||
+      b.startsWith(`idea-issue-${number}`) ||
+      b.includes(`issue-${number}`) ||
+      b.includes(`issue-${number - 1}`) ||
+      b.includes(`pr-${number}`)
+    );
+    return matched || null;
+  } catch (err) {
+    console.warn('[github] Error inspecting local git branches:', err.message);
+    return null;
+  }
+}
+
+export async function fetchPullRequestFromLocalGit(owner, repo, number, options = {}) {
+  const repoDir = findLocalGitRepo(owner, repo);
+  if (!repoDir) return null;
+  const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null' };
+
+  const targetBranch = resolveLocalGitBranch(repoDir, number, options.head);
+  if (!targetBranch) {
+    console.warn(`[github-local] Could not resolve local git branch for PR #${number}`);
+    return null;
+  }
+
+  // Determine target ref
+  let targetRef = null;
+  try {
+    targetRef = execSync(`git rev-parse --verify origin/${targetBranch} 2>/dev/null || git rev-parse --verify ${targetBranch}`, {
+      cwd: repoDir,
+      env,
+      encoding: 'utf8'
+    }).trim();
+  } catch (err) {
+    console.warn(`[github-local] Failed to rev-parse target branch:`, err.message);
+    return null;
+  }
+
+  // Determine base ref
+  let baseRef = 'origin/main';
+  try {
+    baseRef = execSync(`git rev-parse --verify origin/main 2>/dev/null || git rev-parse --verify main`, {
+      cwd: repoDir,
+      env,
+      encoding: 'utf8'
+    }).trim();
+  } catch (_) {}
+
+  // Diff numstat
+  let numstat = '';
+  try {
+    numstat = execSync(`git diff --numstat ${baseRef}...${targetRef}`, {
+      cwd: repoDir,
+      env,
+      encoding: 'utf8'
+    });
+  } catch (err) {
+    console.warn(`[github-local] git diff failed:`, err.message);
+    return null;
+  }
+
+  const rawFiles = [];
+  for (const line of numstat.trim().split('\n').filter(Boolean)) {
+    const [adds, dels, filename] = line.split('\t');
+    if (!filename) continue;
+    let patch = '';
+    try {
+      patch = execSync(`git diff -u ${baseRef}...${targetRef} -- "${filename}"`, {
+        cwd: repoDir,
+        env,
+        encoding: 'utf8'
+      });
+    } catch (_) {}
+
+    rawFiles.push({
+      filename,
+      path: filename,
+      status: (parseInt(adds, 10) > 0 && parseInt(dels, 10) === 0) ? 'added' : 'modified',
+      additions: parseInt(adds, 10) || 0,
+      deletions: parseInt(dels, 10) || 0,
+      patch
+    });
+  }
+
+  // Commit info
+  let commitTitle = '';
+  let commitBody = '';
+  let commitAuthor = 'github-actions[bot]';
+  try {
+    commitTitle = execSync(`git log -n 1 --format="%s" ${targetRef}`, { cwd: repoDir, env, encoding: 'utf8' }).trim();
+    commitBody = execSync(`git log -n 1 --format="%b" ${targetRef}`, { cwd: repoDir, env, encoding: 'utf8' }).trim();
+    commitAuthor = execSync(`git log -n 1 --format="%an" ${targetRef}`, { cwd: repoDir, env, encoding: 'utf8' }).trim();
+  } catch (_) {}
+
+  const prTitle = options.title || commitTitle.replace(/^feat:\s*autonomous implementation for\s*['"]?|['"]?$/gi, '').trim() || `PR #${number}`;
+
+  // Repo Docs
+  const repoDocs = [];
+  const archCandidates = ['docs/architecture.md', 'ARCHITECTURE.md', 'docs/ARCHITECTURE.md'];
+  for (const rel of archCandidates) {
+    const full = path.join(repoDir, rel);
+    if (fs.existsSync(full)) {
+      const content = fs.readFileSync(full, 'utf8').trim();
+      if (content) {
+        repoDocs.push({ role: 'architecture', path: rel, content, changedInPr: false });
+        break;
+      }
+    }
+  }
+
+  const specCandidates = ['docs/simulated_issue_spec.md', 'docs/CONTEXT.md', 'CONTEXT.md', 'docs/PRODUCT.md', 'PRODUCT.md'];
+  for (const rel of specCandidates) {
+    const full = path.join(repoDir, rel);
+    if (fs.existsSync(full)) {
+      const content = fs.readFileSync(full, 'utf8').trim();
+      if (content) {
+        repoDocs.push({ role: 'product', path: rel, content, changedInPr: false });
+        break;
+      }
+    }
+  }
+
+  const readmePath = path.join(repoDir, 'README.md');
+  if (fs.existsSync(readmePath)) {
+    const content = fs.readFileSync(readmePath, 'utf8').trim();
+    if (content) {
+      repoDocs.push({ role: 'readme', path: 'README.md', content, changedInPr: false });
+    }
+  }
+
+  const specDoc = repoDocs.find(d => d.path.includes('simulated_issue_spec') || d.role === 'product');
+  const archDoc = repoDocs.find(d => d.role === 'architecture');
+  const hasArchitectureDoc = Boolean(archDoc && archDoc.content && archDoc.content.trim());
+
+  const issueBody = specDoc ? specDoc.content : commitBody;
+  const synthCriteria = synthesizeCriteria({
+    prTitle,
+    prBody: commitBody || issueBody || '',
+    issueBody: issueBody || '',
+    files: rawFiles
+  });
+
+  const criteria = synthCriteria.criteria;
+  const fileSpecTags = synthCriteria.fileSpecTags || {};
+
+  const mappedFiles = rawFiles.map((f, idx) => ({
+    id: `gh-${number}-file-${idx + 1}`,
+    path: f.filename,
+    tier: inferTier(f.filename, f.additions, f.deletions),
+    importance: inferImportance(f.filename, f.additions, f.deletions),
+    specTag: fileSpecTags[f.filename] || 'ALL',
+    status: 'pending',
+    comments: [],
+    status_github: f.status,
+    additions: f.additions,
+    deletions: f.deletions,
+    diffChunks: parsePatchToChunks(f.patch)
+  }));
+
+  const standards = hasArchitectureDoc ? buildStandardsFromDocs(repoDocs) : [];
+  const architectureText = hasArchitectureDoc ? buildArchitectureText(repoDocs) : '';
+  let testSuites = synthesizeTestSuites(rawFiles, prTitle);
+  const architectureDiagramModel = hasArchitectureDoc ? synthesizeArchitectureDiagram(mappedFiles, prTitle) : null;
+
+  const chunkedFiles = chunkLargeFiles(mappedFiles, 200);
+  const derivedCatalog = buildSymbolCatalogFromFiles(chunkedFiles);
+  let symbolCatalog = derivedCatalog.catalog;
+
+  // Background Gemini AI enrichment if configured
+  const geminiKey = resolveGeminiApiKey(null, db.getSetting?.('gemini_api_key'));
+  if (geminiKey) {
+    try {
+      const geminiData = await deriveSymbolsAndTests({
+        files: chunkedFiles,
+        prTitle,
+        prBody: issueBody || '',
+        criteria,
+        apiKey: geminiKey
+      });
+      if (geminiData?.symbolCatalog && Object.keys(geminiData.symbolCatalog).length > 0) {
+        symbolCatalog = { ...symbolCatalog, ...geminiData.symbolCatalog };
+      }
+      if (Array.isArray(geminiData?.testSuites) && geminiData.testSuites.length > 0) {
+        testSuites = geminiData.testSuites;
+      }
+    } catch (gErr) {
+      console.warn('[Gemini] Automatic background derivation failed, keeping heuristic:', gErr.message);
+    }
+  }
+
+  const linkedIssueNumber = number > 1 ? (number - 1) : number;
+  const linkedIssue = {
+    number: linkedIssueNumber,
+    title: prTitle,
+    description: issueBody || `Local specification for Issue #${linkedIssueNumber}`,
+    author: commitAuthor
+  };
+
+  return {
+    queryId: `GH-${owner}/${repo}#${number}`,
+    title: `PR #${number}: ${prTitle}`,
+    owner,
+    repo,
+    number,
+    htmlUrl: `https://github.com/${owner}/${repo}/pull/${number}`,
+    user: commitAuthor,
+    jiraTicket: {
+      id: `#${linkedIssueNumber}`,
+      title: prTitle,
+      description: issueBody || `PR #${number} locally synchronized from ${targetBranch}`,
+      criteria,
+      linkedIssue
+    },
+    files: chunkedFiles,
+    symbolCatalog,
+    repoDocs,
+    architectureText,
+    standards,
+    testSuites,
+    architectureDiagramModel,
+    fileSpecTags,
+    isLocalFallback: true,
+    meta: {
+      draft: false,
+      base: 'main',
+      head: targetBranch,
+      headSha: targetRef,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      additions: rawFiles.reduce((s, f) => s + (f.additions || 0), 0),
+      deletions: rawFiles.reduce((s, f) => s + (f.deletions || 0), 0),
+      changedFiles: rawFiles.length,
+      linkedIssue,
+      testSuites,
+      architectureDiagramModel,
+      symbolCatalog,
+      fileSpecTags
+    }
+  };
+}
+
 /**
  * Fetch PR metadata + changed files with parsed diffs for the review workspace,
  * plus PR-head repo docs seeded into Level 1 / Level 2.
+ * Transparently falls back to local git workspace on rate limits or API errors.
  */
-export async function fetchPullRequestWorkspace(owner, repo, number, accessToken) {
-  const [pr, files] = await Promise.all([
-    githubFetch(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${number}`, accessToken),
-    githubFetch(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${number}/files?per_page=100`, accessToken)
-  ]);
+export async function fetchPullRequestWorkspace(owner, repo, number, accessToken, options = {}) {
+  let pr = null;
+  let files = null;
+  let fetchError = null;
+
+  try {
+    const [remotePr, remoteFiles] = await Promise.all([
+      githubFetch(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${number}`, accessToken),
+      githubFetch(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${number}/files?per_page=100`, accessToken)
+    ]);
+    pr = remotePr;
+    files = remoteFiles;
+  } catch (err) {
+    fetchError = err;
+    console.warn(`[github] GitHub API fetch failed for PR #${number} (${err.message}). Attempting local git fallback...`);
+  }
+
+  if (!pr || !files) {
+    const localWorkspace = await fetchPullRequestFromLocalGit(owner, repo, number, options);
+    if (localWorkspace) {
+      console.log(`[github] Successfully loaded PR #${number} from local git workspace!`);
+      return localWorkspace;
+    }
+    throw fetchError || new Error(`Failed to load PR #${number}`);
+  }
 
   const headSha = pr.head?.sha;
   let repoDocs = [];
@@ -577,7 +1020,6 @@ export async function fetchPullRequestWorkspace(owner, repo, number, accessToken
     try {
       repoDocs = await fetchRepoDocsAtHead(owner, repo, headSha, files, accessToken);
     } catch (err) {
-      // Non-fatal: PR diffs still load if docs lookup fails (e.g. rate limit)
       console.warn('[github] repo docs fetch failed:', err.message);
       repoDocs = [];
     }
@@ -585,14 +1027,14 @@ export async function fetchPullRequestWorkspace(owner, repo, number, accessToken
 
   const bodyPreview = (pr.body || '').trim();
 
-  // 1. Check for linked GitHub issue in PR body (e.g. Fixes #12, Closes #45)
+  // 1. Check for linked GitHub issue in PR body
   let linkedIssue = null;
   const issueMatch = bodyPreview.match(/(?:fixes|closes|resolves|issue|ref|refs|see)\s*[:#]?\s*(?:https:\/\/github\.com\/[^/]+\/[^/]+\/issues\/)?(\d+)/i);
   if (issueMatch && issueMatch[1]) {
     linkedIssue = await fetchGithubIssue(owner, repo, issueMatch[1], accessToken);
   }
 
-  // 2. Synthesize criteria & file tags (using issue if available, else PR body & files)
+  // 2. Synthesize criteria & file tags
   const synthCriteria = synthesizeCriteria({
     prTitle: pr.title,
     prBody: bodyPreview,
@@ -617,18 +1059,44 @@ export async function fetchPullRequestWorkspace(owner, repo, number, accessToken
     diffChunks: parsePatchToChunks(f.patch)
   }));
 
-  // 3. Architecture standards & text ONLY if an architecture doc is present
+  // 3. Architecture standards & text
   const hasArchitectureDoc = repoDocs.some(d => d.role === 'architecture' && d.content && d.content.trim());
   const docStandards = hasArchitectureDoc ? buildStandardsFromDocs(repoDocs) : [];
   const standards = (docStandards && docStandards.length > 0) ? docStandards : [];
   const architectureText = hasArchitectureDoc ? buildArchitectureText(repoDocs) : '';
 
-  // 4. Test suites & diagram model (diagram ONLY if architecture doc present)
-  const testSuites = synthesizeTestSuites(files, pr.title);
+  // 4. Test suites & diagram model
+  let testSuites = synthesizeTestSuites(files, pr.title);
   const architectureDiagramModel = hasArchitectureDoc ? synthesizeArchitectureDiagram(mappedFiles, pr.title) : null;
 
-  // 5. Break down files exceeding 200 lines into logical chunks (file_name_part_1.ext, etc.)
+  // 5. Break down files exceeding 200 lines into logical chunks
   const chunkedFiles = chunkLargeFiles(mappedFiles, 200);
+
+  // 6. Level 3 Symbol Catalog with complete function bodies
+  const derivedCatalog = buildSymbolCatalogFromFiles(chunkedFiles);
+  let symbolCatalog = derivedCatalog.catalog;
+
+  // Background Gemini AI enrichment if configured
+  const geminiKey = resolveGeminiApiKey(null, db.getSetting?.('gemini_api_key'));
+  if (geminiKey) {
+    try {
+      const geminiData = await deriveSymbolsAndTests({
+        files: chunkedFiles,
+        prTitle: pr.title,
+        prBody: bodyPreview || '',
+        criteria,
+        apiKey: geminiKey
+      });
+      if (geminiData?.symbolCatalog && Object.keys(geminiData.symbolCatalog).length > 0) {
+        symbolCatalog = { ...symbolCatalog, ...geminiData.symbolCatalog };
+      }
+      if (Array.isArray(geminiData?.testSuites) && geminiData.testSuites.length > 0) {
+        testSuites = geminiData.testSuites;
+      }
+    } catch (gErr) {
+      console.warn('[Gemini] Automatic background derivation failed, keeping heuristic:', gErr.message);
+    }
+  }
 
   return {
     queryId: `GH-${owner}/${repo}#${pr.number}`,
@@ -651,6 +1119,7 @@ export async function fetchPullRequestWorkspace(owner, repo, number, accessToken
       } : null
     },
     files: chunkedFiles,
+    symbolCatalog,
     repoDocs,
     architectureText,
     standards,
@@ -675,6 +1144,7 @@ export async function fetchPullRequestWorkspace(owner, repo, number, accessToken
       } : null,
       testSuites,
       architectureDiagramModel,
+      symbolCatalog,
       fileSpecTags
     }
   };

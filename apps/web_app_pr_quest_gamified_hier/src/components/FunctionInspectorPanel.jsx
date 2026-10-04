@@ -38,12 +38,12 @@ export default function FunctionInspectorPanel({
   const currentSymKey = activeSymbolKey || activeSymbol.name || 'rotateSessionToken';
   const isCurrentAudited = auditedSymbols.includes(currentSymKey);
 
-  const rawCode = activeSymbol.modifiedCode || activeSymbol.code;
-  const displayCode = typeof rawCode === 'string'
+  const rawCode = activeSymbol.modifiedCode || activeSymbol.code || activeSymbol.testedFunctionCode;
+  const displayCode = typeof rawCode === 'string' && rawCode.trim()
     ? rawCode
     : rawCode
       ? JSON.stringify(rawCode, null, 2)
-      : '// No implementation code available for this symbol';
+      : '// Implementation code body is being analyzed for this symbol...';
 
   const displaySignature = typeof activeSymbol.signature === 'string'
     ? activeSymbol.signature
@@ -66,8 +66,8 @@ export default function FunctionInspectorPanel({
           </span>
         </div>
 
-        {/* Symbol Selector Pills */}
-        <div className="flex flex-wrap gap-1.5 pt-1">
+        {/* Symbol Selector Pills (compact scrollable) */}
+        <div className="flex flex-wrap gap-1.5 pt-1 max-h-28 overflow-y-auto pr-1">
           {symbols.map((symKey) => {
             const isSelected = (currentSymKey === symKey);
             const isAudited = auditedSymbols.includes(symKey);
@@ -129,7 +129,11 @@ export default function FunctionInspectorPanel({
 
       {/* Function Code */}
       <div className="border border-[#E6E0D5] rounded-xl overflow-hidden bg-white shadow-2xs">
-        <pre className="p-4 bg-white font-mono text-xs leading-relaxed text-[#242220] overflow-x-auto">
+        <div className="bg-[#F9F6F0] px-3.5 py-1.5 border-b border-[#E6E0D5] flex items-center justify-between text-[11px] text-[#6B635A]">
+          <span className="font-mono font-semibold">Implementation Body</span>
+          <span className="text-[10px] bg-white px-2 py-0.5 rounded border border-[#E6E0D5]">Level 3 Audit</span>
+        </div>
+        <pre className="p-4 bg-white font-mono text-xs leading-relaxed text-[#242220] overflow-x-auto whitespace-pre-wrap">
           {displayCode}
         </pre>
       </div>

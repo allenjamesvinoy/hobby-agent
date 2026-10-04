@@ -95,9 +95,7 @@ export default function TestReviewWorkspace({
   onUpdateFileStatus,
   onOpenVerdict,
   isVerdictSubmitted,
-  onAddXp,
-  onTriggerAiPopulate,
-  isAiPopulating = false
+  onAddXp
 }) {
   const normalizedSuites = useMemo(() => {
     return normalizeTestItems(testSuites, files);
@@ -147,20 +145,10 @@ export default function TestReviewWorkspace({
               <div>
                 <h2 className="text-sm font-bold text-[#242220]">Level 4 Unit Test Verification Matrix</h2>
                 <p className="text-xs text-[#6B635A] mt-0.5">
-                  No automated test suites have been populated for this PR yet. You can auto-generate realistic test cases from PR code diffs using Gemini AI, or proceed directly to file approvals below.
+                  No automated test suites have been populated for this PR yet. You can proceed directly to file approvals below.
                 </p>
               </div>
             </div>
-            {onTriggerAiPopulate && (
-              <button
-                onClick={onTriggerAiPopulate}
-                disabled={isAiPopulating}
-                className="px-4 py-2 bg-[#242220] hover:bg-black text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-2 shrink-0 disabled:opacity-50"
-              >
-                {isAiPopulating ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[#D08A29]" /> : <Sparkles className="w-3.5 h-3.5 text-[#D08A29]" />}
-                <span>{isAiPopulating ? "Generating Test Suites..." : "✨ Generate Tests with AI"}</span>
-              </button>
-            )}
           </div>
         </div>
       ) : (

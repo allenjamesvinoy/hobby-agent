@@ -251,17 +251,18 @@ export function synthesizeArchitectureDiagram(files = [], prTitle = '') {
  */
 export function synthesizeTestSuites(files = [], prTitle = '') {
   const cleanTitle = prTitle.replace(/^PR\s*#?\d*:\s*/i, '').trim() || 'PR Code Changes';
-  const testFiles = files.filter(f => /test|spec|__test__/i.test(f.path));
-  const codeFiles = files.filter(f => !/test|spec|__test__/i.test(f.path));
+  const testFiles = files.filter(f => /test|spec|__test__/i.test(f.path || f.filename || ''));
+  const codeFiles = files.filter(f => !/test|spec|__test__/i.test(f.path || f.filename || ''));
   const primaryFiles = (codeFiles.length > 0 ? codeFiles : files).slice(0, 3);
 
   const testCases = [];
 
   primaryFiles.forEach((file, idx) => {
-    const baseName = extractBaseName(file.path);
+    const filePath = file.path || file.filename || 'module.js';
+    const baseName = extractBaseName(filePath);
     const modName = baseName.replace(/\.[^.]+$/, '');
     const symbolCandidate = modName.charAt(0).toLowerCase() + modName.slice(1);
-    const testFilePath = testFiles[idx]?.path || `tests/${modName}.test.js`;
+    const testFilePath = (testFiles[idx]?.path || testFiles[idx]?.filename) || `tests/${modName}.test.js`;
 
     testCases.push({
       id: `test-${idx + 1}`,

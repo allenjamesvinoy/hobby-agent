@@ -121,9 +121,12 @@ export default function ArchitectureDiagramModal({
   currentQueryTitle = '',
   jiraTicket = null,
   hasArchitectureDoc = false,
+  isGithubQuery = false,
+  hasUploadedMd = false,
   onUploadArchitecture = null
 }) {
   const isDynamic = Boolean(diagramModel && Array.isArray(diagramModel.nodes) && diagramModel.nodes.length > 0);
+  const showDiagram = isGithubQuery ? Boolean(hasUploadedMd && (isDynamic || hasArchitectureDoc)) : true;
   const [activeTab, setActiveTab] = useState('diff'); // 'diff' | 'proposed' | 'baseline'
   const [selectedNode, setSelectedNode] = useState(isDynamic ? diagramModel?.nodes[0]?.id : 'SM');
 
@@ -213,38 +216,40 @@ export default function ArchitectureDiagramModal({
 
           <div className="flex items-center gap-2">
             {/* View Mode Toggle */}
-            <div className="flex items-center gap-1 bg-[#F9F6F0] p-1 rounded-xl border border-[#E6E0D5]">
-              <button
-                onClick={() => setActiveTab('diff')}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  activeTab === 'diff'
-                    ? 'bg-[#C35832] text-white shadow-2xs'
-                    : 'text-[#6B635A] hover:text-[#242220]'
-                }`}
-              >
-                Diff View
-              </button>
-              <button
-                onClick={() => setActiveTab('proposed')}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  activeTab === 'proposed'
-                    ? 'bg-[#C35832] text-white shadow-2xs'
-                    : 'text-[#6B635A] hover:text-[#242220]'
-                }`}
-              >
-                Proposed Flow
-              </button>
-              <button
-                onClick={() => setActiveTab('baseline')}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  activeTab === 'baseline'
-                    ? 'bg-[#C35832] text-white shadow-2xs'
-                    : 'text-[#6B635A] hover:text-[#242220]'
-                }`}
-              >
-                Baseline Flow
-              </button>
-            </div>
+            {showDiagram && (
+              <div className="flex items-center gap-1 bg-[#F9F6F0] p-1 rounded-xl border border-[#E6E0D5]">
+                <button
+                  onClick={() => setActiveTab('diff')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    activeTab === 'diff'
+                      ? 'bg-[#C35832] text-white shadow-2xs'
+                      : 'text-[#6B635A] hover:text-[#242220]'
+                  }`}
+                >
+                  Diff View
+                </button>
+                <button
+                  onClick={() => setActiveTab('proposed')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    activeTab === 'proposed'
+                      ? 'bg-[#C35832] text-white shadow-2xs'
+                      : 'text-[#6B635A] hover:text-[#242220]'
+                  }`}
+                >
+                  Proposed Flow
+                </button>
+                <button
+                  onClick={() => setActiveTab('baseline')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    activeTab === 'baseline'
+                      ? 'bg-[#C35832] text-white shadow-2xs'
+                      : 'text-[#6B635A] hover:text-[#242220]'
+                  }`}
+                >
+                  Baseline Flow
+                </button>
+              </div>
+            )}
 
             <button 
               onClick={onClose}
@@ -257,17 +262,17 @@ export default function ArchitectureDiagramModal({
         </div>
 
         {/* Diagram Canvas Body */}
-        {!hasArchitectureDoc ? (
+        {!showDiagram ? (
           <div className="flex-1 overflow-auto p-8 sm:p-12 bg-[#FDFCFB] flex flex-col justify-center items-center text-center select-none">
             <div className="max-w-md w-full bg-white border border-dashed border-[#E6E0D5] rounded-2xl p-8 shadow-xs space-y-4">
               <div className="w-14 h-14 rounded-2xl bg-[#FBEFEF] text-[#C35832] flex items-center justify-center mx-auto text-2xl shadow-2xs">
                 📐
               </div>
               <div>
-                <h3 className="text-base font-bold text-[#242220]">Architecture Diagram Locked</h3>
+                <h3 className="text-base font-bold text-[#242220]">No Architecture Specification Uploaded</h3>
                 <p className="text-xs text-[#6B635A] mt-2 leading-relaxed">
                   No <code className="font-mono bg-[#F1ECE4] px-1 py-0.5 rounded text-[11px]">architecture.md</code> document has been uploaded for this review.
-                  Upload an architecture document in Level 2 to have Gemini evaluate architectural boundaries and generate an interactive diff diagram.
+                  Upload an architecture specification in Level 2 to evaluate architectural boundaries and generate an interactive diff diagram.
                 </p>
               </div>
               {onUploadArchitecture && (

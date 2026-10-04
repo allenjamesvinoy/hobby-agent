@@ -223,10 +223,16 @@ class ApiClient {
   /**
    * Load a GitHub PR (files + diffs) into a review workspace payload.
    */
-  async fetchGitHubPullRequest(owner, repo, number) {
+  async fetchGitHubPullRequest(owner, repo, number, options = {}) {
     try {
+      const qp = new URLSearchParams();
+      if (options.head) qp.set('head', options.head);
+      if (options.base) qp.set('base', options.base);
+      if (options.title) qp.set('title', options.title);
+      const qs = qp.toString() ? `?${qp.toString()}` : '';
+
       const res = await fetch(
-        `${API_BASE}/github/pr/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${encodeURIComponent(number)}`,
+        `${API_BASE}/github/pr/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${encodeURIComponent(number)}${qs}`,
         {
           headers: this.authHeaders(),
           signal: AbortSignal.timeout(20000)

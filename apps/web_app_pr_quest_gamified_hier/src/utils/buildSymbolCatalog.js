@@ -14,11 +14,12 @@ const FN_PATTERNS = [
 
 const SKIP_NAMES = new Set([
   'if', 'for', 'while', 'switch', 'catch', 'return', 'await', 'import', 'from',
-  'class', 'new', 'typeof', 'function', 'const', 'let', 'var', 'export', 'default'
+  'class', 'new', 'typeof', 'function', 'const', 'let', 'var', 'export', 'default',
+  'tr', 'mx', 'my', 'lineContent', 'desc', 'hint', 'shortPath', 'shortName'
 ]);
 
 function lineContent(line) {
-  return typeof line === 'string' ? line : (line?.content || '');
+  return typeof line === 'string' ? line : (line?.content || line?.text || '');
 }
 
 function extractAddedLines(file) {
@@ -44,18 +45,34 @@ function findFunctionName(content) {
   }
   for (const re of FN_PATTERNS) {
     const m = trimmed.match(re);
-    if (m && m[1] && !SKIP_NAMES.has(m[1])) {
+    if (m && m[1] && m[1].length >= 3 && !SKIP_NAMES.has(m[1])) {
       return m[1];
     }
   }
   return null;
 }
 
-function collectSnippet(lines, startIdx, maxLines = 18) {
+function collectSnippet(lines, startIdx, maxLines = 40) {
   const buf = [];
+  let braceDepth = 0;
+  let hasBrace = false;
+
   for (let i = startIdx; i < Math.min(lines.length, startIdx + maxLines); i++) {
-    buf.push(lines[i].content);
-    if (buf.length > 4 && /^\s*\}/.test(lines[i].content)) break;
+    const raw = lines[i].content;
+    buf.push(raw);
+
+    for (const ch of raw) {
+      if (ch === '{') {
+        braceDepth++;
+        hasBrace = true;
+      } else if (ch === '}') {
+        braceDepth--;
+      }
+    }
+
+    if (hasBrace && braceDepth <= 0 && buf.length >= 2) {
+      break;
+    }
   }
   return buf.join('\n') || '// Symbol body not available in diff hunk';
 }
@@ -100,6 +117,7 @@ export function buildSymbolCatalogFromFiles(files = []) {
       if (row.type !== 'add') return;
       const name = findFunctionName(row.content);
       if (!name || catalog[name]) return;
+      if (Object.keys(catalog).length >= 16) return;
 
       const modifiedCode = collectSnippet(lines, idx);
       const callers = findCallers(name, list, file.path);
@@ -125,10 +143,11 @@ export function buildSymbolCatalogFromFiles(files = []) {
       catalog[name] = {
         name,
         signature: `${name}()`,
-        type: 'Symbol',
+        type: 'Function',
         file: file.path,
         tier: file.tier || 'Tier 1: Core Logic',
         isModified: true,
+        code: modifiedCode,
         modifiedCode,
         originalCode: `// Prior implementation not fully available in this PR hunk.\n// Review call sites and surrounding diff for ${name}().`,
         matches,

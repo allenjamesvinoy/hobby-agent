@@ -348,6 +348,7 @@ app.post('/api/github/open-prs', async (req, res) => {
 app.get('/api/github/pr/:owner/:repo/:number', async (req, res) => {
   try {
     const { owner, repo, number } = req.params;
+    const { head, base, title } = req.query;
     const prNumber = Number(number);
     if (!owner || !repo || !Number.isFinite(prNumber) || prNumber <= 0) {
       return res.status(400).json({ error: 'owner, repo, and a valid PR number are required' });
@@ -355,7 +356,11 @@ app.get('/api/github/pr/:owner/:repo/:number', async (req, res) => {
 
     const userId = resolveUserId(req);
     const accessToken = getLinkedToken(userId);
-    const workspace = await fetchPullRequestWorkspace(owner, repo, prNumber, accessToken);
+    const workspace = await fetchPullRequestWorkspace(owner, repo, prNumber, accessToken, {
+      head: head ? String(head) : null,
+      base: base ? String(base) : null,
+      title: title ? String(title) : null
+    });
     res.json({ success: true, ...workspace, authenticated: Boolean(accessToken) });
   } catch (err) {
     const status = err.status && err.status >= 400 && err.status < 600 ? err.status : 502;
