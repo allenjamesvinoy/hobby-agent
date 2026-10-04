@@ -201,30 +201,30 @@ export default function InfoSidePanel({ isOpen, onClose }) {
             </div>
           </section>
 
-          {/* Section 3: XP & Gamification */}
+          {/* Section 3: Review Milestones */}
           <section className="space-y-2 pt-3 border-t border-[#F1ECE4]">
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-[#D08A29]" />
               <h3 className="text-sm font-bold text-[#242220] uppercase tracking-wider">
-                Earn XP as You Review
+                Review Milestones
               </h3>
             </div>
             <div className="grid grid-cols-2 gap-2 text-[11px]">
               <div className="bg-[#F9F6F0] p-2 rounded border border-[#E6E0D5]">
-                <div className="font-bold text-[#4F6D56]">+25 XP</div>
-                <div className="text-[#6B635A]">Verify Acceptance Criterion</div>
+                <div className="font-bold text-[#4F6D56]">Step 1</div>
+                <div className="text-[#6B635A]">Verify Acceptance Criteria</div>
               </div>
               <div className="bg-[#F9F6F0] p-2 rounded border border-[#E6E0D5]">
-                <div className="font-bold text-[#4F6D56]">+40 XP</div>
-                <div className="text-[#6B635A]">Approve / Flag a file</div>
+                <div className="font-bold text-[#4F6D56]">Step 2</div>
+                <div className="text-[#6B635A]">Audit Architectural Standards</div>
               </div>
               <div className="bg-[#F9F6F0] p-2 rounded border border-[#E6E0D5]">
-                <div className="font-bold text-[#4F6D56]">+15 XP</div>
-                <div className="text-[#6B635A]">Add an inline comment</div>
+                <div className="font-bold text-[#4F6D56]">Step 3</div>
+                <div className="text-[#6B635A]">Inspect Blast Radius & Symbols</div>
               </div>
               <div className="bg-[#F9F6F0] p-2 rounded border border-[#E6E0D5]">
-                <div className="font-bold text-[#4F6D56]">+100 XP</div>
-                <div className="text-[#6B635A]">Submit Final Verdict</div>
+                <div className="font-bold text-[#4F6D56]">Step 4</div>
+                <div className="text-[#6B635A]">Verify Tests & Final Verdict</div>
               </div>
             </div>
           </section>

@@ -317,7 +317,7 @@ function AppContent() {
     }
     setXp(prev => prev + amount);
     setQuestLogs(prev => [
-      { id: Date.now() + Math.random(), text: `+${amount} XP: ${reason}`, timestamp: new Date().toLocaleTimeString() },
+      { id: Date.now() + Math.random(), text: `Completed: ${reason}`, timestamp: new Date().toLocaleTimeString() },
       ...prev
     ].slice(0, 5));
     return true;
@@ -915,7 +915,7 @@ function AppContent() {
                   className="px-5 py-2 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
                 >
                   <Award className="w-3.5 h-3.5" />
-                  <span>Submit Review Verdict (+100 XP)</span>
+                  <span>Submit Review Verdict</span>
                 </button>
               </div>
             </div>

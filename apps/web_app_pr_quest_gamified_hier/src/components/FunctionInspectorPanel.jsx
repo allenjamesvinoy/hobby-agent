@@ -59,7 +59,7 @@ export default function FunctionInspectorPanel({
             <GitBranch className="w-3.5 h-3.5" /> Blast Radius Matrix
           </span>
           <span className="text-xs text-[#4F6D56] font-bold bg-[#F4F8F5] px-2 py-0.5 rounded border border-[#4F6D56]/20">
-            {auditedCount}/{symbols.length} Audited (+25 XP)
+            {auditedCount}/{symbols.length} Audited
           </span>
         </div>
 

@@ -470,7 +470,7 @@ export default function HierarchicalDiffViewer({
                                           onClick={() => handleAddInlineComment(file.id, lineIdx)}
                                           className="px-2.5 py-1 bg-[#C35832] text-white text-[11px] font-bold rounded hover:bg-[#A84725] cursor-pointer"
                                         >
-                                          Post Comment (+15 XP)
+                                          Post Comment
                                         </button>
                                       </div>
                                     </div>

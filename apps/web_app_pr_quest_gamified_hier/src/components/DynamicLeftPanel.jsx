@@ -112,7 +112,7 @@ export default function DynamicLeftPanel({
                   <button 
                     onClick={() => onToggleStandard(std.id)}
                     className="mt-0.5 text-[#C35832] hover:scale-110 transition-transform flex-shrink-0 cursor-pointer"
-                    title={std.completed ? "Mark incomplete" : "Mark standard audited (+25 XP)"}
+                    title={std.completed ? "Mark incomplete" : "Mark standard audited"}
                   >
                     {std.completed ? (
                       <CheckSquare className="w-4 h-4 text-[#4F6D56]" />
@@ -135,7 +135,7 @@ export default function DynamicLeftPanel({
                     </p>
                     <div className="text-[9px] text-[#6B635A]/70 font-mono mt-1.5 flex items-center justify-between pt-1 border-t border-current/10">
                       <span>Ref: {std.standardFile}</span>
-                      <span className="font-semibold text-[#4F6D56]">{std.completed ? "✓ Audited" : "+25 XP"}</span>
+                      <span className="font-semibold text-[#4F6D56]">{std.completed ? "✓ Audited" : "Pending"}</span>
                     </div>
                   </div>
                 </div>
@@ -144,7 +144,7 @@ export default function DynamicLeftPanel({
           </div>
 
           <div className="mt-3 pt-3 border-t border-[#F1ECE4] flex items-center justify-between text-[11px] text-[#6B635A]">
-            <span>+25 XP per audited item</span>
+            <span>Standard Verification</span>
             <button
               onClick={onOpenArchModal}
               className="text-[#C35832] font-semibold hover:underline flex items-center gap-1 cursor-pointer"
@@ -216,7 +216,7 @@ export default function DynamicLeftPanel({
               <GitBranch className="w-3.5 h-3.5" /> Blast Radius Matrix
             </span>
             <span className="text-xs text-[#4F6D56] font-bold bg-[#F4F8F5] px-2 py-0.5 rounded border border-[#4F6D56]/20">
-              {auditedCount}/{symbols.length} Audited (+25 XP)
+              {auditedCount}/{symbols.length} Audited
             </span>
           </div>
           <h2 className="text-sm font-bold text-[#242220] mt-2 leading-snug">
@@ -254,7 +254,7 @@ export default function DynamicLeftPanel({
                         onToggleSymbolAudit && onToggleSymbolAudit(symKey);
                       }}
                       className="text-[#C35832] hover:scale-110 transition-transform cursor-pointer"
-                      title={isAudited ? "Mark symbol unverified" : "Audit symbol blast radius (+25 XP)"}
+                      title={isAudited ? "Mark symbol unverified" : "Audit symbol blast radius"}
                     >
                       {isAudited ? (
                         <CheckSquare className="w-4 h-4 text-[#4F6D56]" />

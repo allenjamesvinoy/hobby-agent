@@ -287,7 +287,7 @@ export default function TestReviewWorkspace({
                       : 'bg-[#F4F8F5] text-[#4F6D56] hover:bg-[#4F6D56] hover:text-white border border-[#4F6D56]/30'
                   }`}
                 >
-                  <Check className="w-3.5 h-3.5" /> Approve Test (+20 XP)
+                  <Check className="w-3.5 h-3.5" /> Approve Test
                 </button>
                 <button
                   onClick={() => handleTestStatus(activeTest.id, 'flagged')}
@@ -486,7 +486,7 @@ export default function TestReviewWorkspace({
           onClick={onOpenVerdict}
           className="px-5 py-2.5 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center gap-2 flex-shrink-0 cursor-pointer group"
         >
-          <span>{isVerdictSubmitted ? "View Review Report" : "Submit Final Review Verdict (+100 XP)"}</span>
+          <span>{isVerdictSubmitted ? "View Review Report" : "Submit Final Review Verdict"}</span>
           <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
         </button>
       </div>

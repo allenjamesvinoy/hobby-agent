@@ -123,7 +123,7 @@ export default function SpecNav({
             <span>✅</span> Acceptance Criteria
           </label>
           <span className="text-[10px] text-[#4F6D56] font-bold bg-[#F4F8F5] px-2 py-0.5 rounded border border-[#4F6D56]/20">
-            {jiraTicket.criteria.filter(c => c.completed).length}/{jiraTicket.criteria.length} Verified (+25 XP)
+            {jiraTicket.criteria.filter(c => c.completed).length}/{jiraTicket.criteria.length} Verified
           </span>
         </div>
 
@@ -141,7 +141,7 @@ export default function SpecNav({
               <button 
                 onClick={() => toggleAc(ac.id)}
                 className="mt-0.5 text-[#C35832] hover:scale-110 transition-transform flex-shrink-0 cursor-pointer"
-                title={ac.completed ? "Mark incomplete" : "Mark AC completed (+25 XP)"}
+                title={ac.completed ? "Mark incomplete" : "Mark AC completed"}
               >
                 {ac.completed ? (
                   <CheckSquare className="w-4 h-4 text-[#4F6D56]" />

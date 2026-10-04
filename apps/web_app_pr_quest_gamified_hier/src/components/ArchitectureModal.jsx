@@ -80,7 +80,7 @@ export default function ArchitectureModal({
             onClick={handleSave}
             className="px-4 py-2 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-lg shadow-sm transition-colors flex items-center gap-1.5"
           >
-            <Save className="w-4 h-4" /> Save & Parse (+30 XP)
+            <Save className="w-4 h-4" /> Save & Parse
           </button>
         </div>
       </div>
