@@ -284,29 +284,6 @@ export default function FunctionInspectorPanel({
           ))}
         </div>
       </div>
-
-      {/* Level 4 Progression Footer */}
-      {onProceedNextLevel && (
-        <div className="pt-3 border-t border-[#F1ECE4]">
-          <button
-            onClick={onProceedNextLevel}
-            disabled={!isLevelComplete}
-            className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-xs ${
-              isLevelComplete
-                ? 'bg-[#C35832] hover:bg-[#A84725] text-white cursor-pointer shadow-sm'
-                : 'bg-[#F1ECE4] text-[#8C827A] cursor-not-allowed opacity-75'
-            }`}
-          >
-            <span>Proceed to Level 4: Tests & Verdict</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
-          {!isLevelComplete && (
-            <p className="text-[10px] text-center text-[#8C827A] mt-1.5 font-medium">
-              Audit all {symbols.length} functions above to unlock Level 4 ({auditedCount}/{symbols.length} complete)
-            </p>
-          )}
-        </div>
-      )}
     </div>
   );
 }

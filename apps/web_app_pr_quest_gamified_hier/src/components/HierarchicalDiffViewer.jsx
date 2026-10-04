@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, AlertTriangle, MessageSquare, Star, ChevronDown, ChevronUp, Search, Info, ShieldAlert, Sparkles, X, Send, Trash2, Flag } from 'lucide-react';
+import { Check, AlertTriangle, MessageSquare, Star, ChevronDown, ChevronUp, Search, Info, ShieldAlert, Sparkles, X, Send, Trash2, Flag, Award } from 'lucide-react';
 import PeerCommentsSection from './PeerCommentsSection';
 
 export default function HierarchicalDiffViewer({ 
@@ -14,7 +14,8 @@ export default function HierarchicalDiffViewer({
   onInspectSymbol,
   onOpenInfo,
   currentUser,
-  onRemoveFlag
+  onRemoveFlag,
+  onOpenVerdict
 }) {
   const [commentInputs, setCommentInputs] = useState({});
   const [expandedFiles, setExpandedFiles] = useState({});
@@ -105,6 +106,8 @@ export default function HierarchicalDiffViewer({
     }));
   };
 
+  const reviewedByMeCount = files.filter(f => (f.reviewerStatuses?.[currentUser?.id]?.status || 'pending') !== 'pending').length;
+
   return (
     <div className="space-y-4">
       {/* Header & Search Bar */}
@@ -120,16 +123,28 @@ export default function HierarchicalDiffViewer({
               </span>
             )}
           </div>
-          {onOpenInfo && (
-            <button
-              onClick={onOpenInfo}
-              className="text-xs text-[#6B635A] hover:text-[#C35832] font-semibold flex items-center gap-1 cursor-pointer transition-colors"
-              title="Learn what Tiers and Review Levels mean"
-            >
-              <Info className="w-3.5 h-3.5 text-[#C35832]" />
-              <span className="hidden sm:inline">Tier Guide</span>
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {onOpenVerdict && (
+              <button
+                onClick={onOpenVerdict}
+                className="px-2.5 py-1 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-lg shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                title="Submit full or partial review verdict"
+              >
+                <Award className="w-3.5 h-3.5" />
+                <span>Submit Review ({reviewedByMeCount}/{files.length})</span>
+              </button>
+            )}
+            {onOpenInfo && (
+              <button
+                onClick={onOpenInfo}
+                className="text-xs text-[#6B635A] hover:text-[#C35832] font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                title="Learn what Tiers and Review Levels mean"
+              >
+                <Info className="w-3.5 h-3.5 text-[#C35832]" />
+                <span className="hidden sm:inline">Tier Guide</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Search Input */}

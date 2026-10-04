@@ -20,7 +20,7 @@ import ArchitectureDiagramModal from './components/ArchitectureDiagramModal';
 import InfoSidePanel from './components/InfoSidePanel';
 import AuthModal from './components/AuthModal';
 import QuerySelectorModal from './components/QuerySelectorModal';
-import { Award, CheckCircle, AlertTriangle, Sparkles, ArrowRight, ShieldAlert, MessageSquare, Send, Check } from 'lucide-react';
+import { Award, CheckCircle, AlertTriangle, Sparkles, ArrowRight, ShieldAlert, MessageSquare, Send, Check, Clock } from 'lucide-react';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -92,7 +92,7 @@ function AppContent() {
   const [level, setLevel] = useState(1);
   const [xp, setXp] = useState(0);
   const [awardedActions, setAwardedActions] = useState([]);
-  const [unlockedLevel, setUnlockedLevel] = useState(1);
+  const [unlockedLevel, setUnlockedLevel] = useState(4);
 
   const [jiraTicket, setJiraTicket] = useState(initialJiraTicket);
   const [files, setFiles] = useState(initialFiles);
@@ -107,6 +107,7 @@ function AppContent() {
   // Verdict Modal Form State
   const [userVerdictType, setUserVerdictType] = useState('approved');
   const [userVerdictNotes, setUserVerdictNotes] = useState('');
+  const [alsoApproveRemaining, setAlsoApproveRemaining] = useState(false);
 
   const [selectedSpec, setSelectedSpec] = useState('ALL');
   const [activeFileId, setActiveFileId] = useState(initialFiles[0]?.id || null);
@@ -347,23 +348,6 @@ function AppContent() {
   const isVerdictSubmitted = awardedActions.includes('final-verdict-submitted') || verdicts.some(v => v.userId === currentUser.id);
   const isLevel4Complete = allFilesReviewed && isVerdictSubmitted;
 
-  // Sequential level unlock trigger
-  useEffect(() => {
-    let eligibleUnlocked = 1;
-    if (isLevel1Complete) eligibleUnlocked = 2;
-    if (isLevel1Complete && isLevel2Complete) eligibleUnlocked = 3;
-    if (isLevel1Complete && isLevel2Complete && isLevel3Complete) eligibleUnlocked = 4;
-
-    if (eligibleUnlocked > unlockedLevel) {
-      setUnlockedLevel(eligibleUnlocked);
-      handleAddXp(50, `Unlocked Level ${eligibleUnlocked}!`, `unlock-level-${eligibleUnlocked}`);
-      setQuestLogs(prev => [
-        { id: Date.now(), text: `🎉 LEVEL UNLOCKED! Level ${eligibleUnlocked} is now available!`, timestamp: new Date().toLocaleTimeString() },
-        ...prev
-      ].slice(0, 5));
-    }
-  }, [isLevel1Complete, isLevel2Complete, isLevel3Complete, unlockedLevel]);
-
   // Overall progress percentage
   const l1Prog = totalAcCount > 0 ? (completedAcCount / totalAcCount) * 25 : 0;
   const l2Prog = totalStandardsCount > 0 ? (completedStandardsCount / totalStandardsCount) * 25 : 0;
@@ -492,24 +476,35 @@ function AppContent() {
   };
 
   const handleSubmitFinalVerdict = async () => {
-    if (pendingCount > 0) {
-      if (window.confirm(`You still have ${pendingCount} pending code file(s) in your review. Would you like to approve all remaining files and submit your verdict?`)) {
-        for (const f of files) {
-          if (getUserFileStatus(f) === 'pending') {
-            await handleUpdateFileStatus(f.id, 'approved');
-          }
+    // If user explicitly checked the box to bulk-approve remaining files
+    if (userVerdictType === 'approved' && alsoApproveRemaining && pendingCount > 0) {
+      for (const f of files) {
+        if (getUserFileStatus(f) === 'pending') {
+          await handleUpdateFileStatus(f.id, 'approved');
         }
-      } else {
-        return;
       }
     }
+
+    const currentReviewed = files.filter(f => getUserFileStatus(f) !== 'pending').length;
+    const isPartialReview = userVerdictType === 'partial' || (pendingCount > 0 && !alsoApproveRemaining);
+
+    const defaultNotes = userVerdictType === 'approved' 
+      ? 'All reviewed code changes approved.' 
+      : userVerdictType === 'partial'
+        ? `Partial review submitted (${currentReviewed} of ${files.length} files reviewed).`
+        : userVerdictType === 'changes_requested'
+          ? 'Changes requested by reviewer.'
+          : 'Review comments provided.';
 
     const verdictEntry = {
       userId: currentUser.id,
       userName: currentUser.name,
       userAvatar: currentUser.avatar || '👨‍💻',
       verdict: userVerdictType,
-      notes: userVerdictNotes || (userVerdictType === 'approved' ? 'All acceptance criteria and code changes approved.' : 'Changes requested by reviewer.'),
+      isPartial: isPartialReview,
+      reviewedCount: currentReviewed,
+      totalFiles: files.length,
+      notes: userVerdictNotes || defaultNotes,
       timestamp: 'Just now'
     };
 
@@ -524,7 +519,7 @@ function AppContent() {
     });
 
     await api.submitVerdict(currentQueryId, verdictEntry);
-    handleAddXp(100, `Submitted Final Review Verdict as ${currentUser.name}`, "final-verdict-submitted");
+    handleAddXp(100, `Submitted Review Verdict as ${currentUser.name}`, "final-verdict-submitted");
 
     setQuestLogs(prev => [
       { id: Date.now(), text: `🏆 Verdict submitted: ${userVerdictType.toUpperCase()} by ${currentUser.name}`, timestamp: new Date().toLocaleTimeString() },
@@ -537,7 +532,7 @@ function AppContent() {
   const handleReset = async () => {
     if (window.confirm("Are you sure you want to reset your review quest progress for this query?")) {
       setLevel(1);
-      setUnlockedLevel(1);
+      setUnlockedLevel(4);
       setXp(0);
       setAwardedActions([]);
       const freshCriteria = initialJiraTicket.criteria.map(ac => ({ ...ac, completed: false }));
@@ -626,6 +621,7 @@ function AppContent() {
                 onOpenInfo={() => setIsInfoOpen(true)}
                 currentUser={currentUser}
                 onRemoveFlag={handleRemoveFlag}
+                onOpenVerdict={() => setIsVerdictOpen(true)}
               />
             </section>
             <section className="lg:col-span-5 lg:sticky lg:top-4 self-start">
@@ -638,10 +634,6 @@ function AppContent() {
                 onAddXp={handleAddXp}
                 onSelectFileByPath={handleSelectFileByPath}
                 isLevelComplete={isLevel3Complete}
-                onProceedNextLevel={() => {
-                  setUnlockedLevel(prev => Math.max(prev, 4));
-                  setLevel(4);
-                }}
               />
             </section>
           </div>
@@ -672,18 +664,6 @@ function AppContent() {
                   level === 3 ? isLevel3Complete :
                   isLevel4Complete
                 }
-                onProceedNextLevel={() => {
-                  if (level === 1) {
-                    setUnlockedLevel(prev => Math.max(prev, 2));
-                    setLevel(2);
-                  } else if (level === 2) {
-                    setUnlockedLevel(prev => Math.max(prev, 3));
-                    setLevel(3);
-                  } else if (level === 3) {
-                    setUnlockedLevel(prev => Math.max(prev, 4));
-                    setLevel(4);
-                  }
-                }}
               />
             </section>
             <section className="lg:col-span-8">
@@ -700,6 +680,7 @@ function AppContent() {
                   onOpenInfo={() => setIsInfoOpen(true)}
                   currentUser={currentUser}
                   onRemoveFlag={handleRemoveFlag}
+                  onOpenVerdict={() => setIsVerdictOpen(true)}
                 />
               </section>
           </div>
@@ -822,9 +803,17 @@ function AppContent() {
                               ? 'bg-[#F4F8F5] text-[#4F6D56] border border-[#4F6D56]/30' 
                               : v.verdict === 'changes_requested'
                                 ? 'bg-[#FFF8F6] text-[#C35832] border border-[#F7D8D0]'
-                                : 'bg-[#FFFDF9] text-[#D08A29] border border-[#D08A29]/30'
+                                : v.verdict === 'partial'
+                                  ? 'bg-[#FFFDF9] text-[#D08A29] border border-[#D08A29]/30'
+                                  : 'bg-[#F9F6F0] text-[#6B635A] border border-[#E6E0D5]'
                           }`}>
-                            {v.verdict === 'approved' ? '✓ APPROVED' : v.verdict === 'changes_requested' ? '⚠️ CHANGES REQUESTED' : '💬 COMMENT'}
+                            {v.verdict === 'approved' 
+                              ? '✓ APPROVED' 
+                              : v.verdict === 'changes_requested' 
+                                ? '⚠️ CHANGES REQUESTED' 
+                                : v.verdict === 'partial'
+                                  ? `⏳ PARTIAL REVIEW${v.reviewedCount !== undefined ? ` (${v.reviewedCount}/${v.totalFiles || files.length})` : ''}`
+                                  : '💬 COMMENT'}
                           </span>
                         </div>
                         {v.notes && (
@@ -847,11 +836,11 @@ function AppContent() {
                   <span className="text-[11px] text-[#6B635A] font-mono">@{currentUser.username || currentUser.id}</span>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <button
                     type="button"
                     onClick={() => setUserVerdictType('approved')}
-                    className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    className={`p-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                       userVerdictType === 'approved'
                         ? 'bg-[#4F6D56] text-white border-[#4F6D56] shadow-xs'
                         : 'bg-white border-[#E6E0D5] text-[#4F6D56] hover:bg-[#F4F8F5]'
@@ -863,7 +852,7 @@ function AppContent() {
                   <button
                     type="button"
                     onClick={() => setUserVerdictType('changes_requested')}
-                    className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    className={`p-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                       userVerdictType === 'changes_requested'
                         ? 'bg-[#C35832] text-white border-[#C35832] shadow-xs'
                         : 'bg-white border-[#E6E0D5] text-[#C35832] hover:bg-[#FFF8F6]'
@@ -874,16 +863,54 @@ function AppContent() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setUserVerdictType('comment')}
-                    className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      userVerdictType === 'comment'
+                    onClick={() => setUserVerdictType('partial')}
+                    className={`p-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      userVerdictType === 'partial'
                         ? 'bg-[#D08A29] text-white border-[#D08A29] shadow-xs'
                         : 'bg-white border-[#E6E0D5] text-[#D08A29] hover:bg-[#FFFDF9]'
                     }`}
                   >
-                    <MessageSquare className="w-3.5 h-3.5" />
-                    <span>Comment / Handoff</span>
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Partial Review</span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setUserVerdictType('comment')}
+                    className={`p-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      userVerdictType === 'comment'
+                        ? 'bg-[#6B635A] text-white border-[#6B635A] shadow-xs'
+                        : 'bg-white border-[#E6E0D5] text-[#6B635A] hover:bg-[#F9F6F0]'
+                    }`}
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    <span>Comment</span>
+                  </button>
+                </div>
+
+                {/* Review Scope Summary Banner */}
+                <div className="bg-[#F9F6F0] border border-[#E6E0D5] rounded-xl p-3 text-xs space-y-1.5">
+                  <div className="flex items-center justify-between font-medium">
+                    <span className="text-[#242220]">Review Scope:</span>
+                    <span className="font-bold text-[#4F6D56]">
+                      {reviewedCount} of {files.length} files reviewed ({pendingCount} pending)
+                    </span>
+                  </div>
+                  {userVerdictType === 'approved' && pendingCount > 0 && (
+                    <label className="flex items-center gap-2 pt-1 text-[11px] text-[#6B635A] cursor-pointer border-t border-[#E6E0D5]/60">
+                      <input
+                        type="checkbox"
+                        checked={alsoApproveRemaining}
+                        onChange={(e) => setAlsoApproveRemaining(e.target.checked)}
+                        className="rounded border-[#E6E0D5] text-[#C35832] focus:ring-[#C35832]"
+                      />
+                      <span>Also mark remaining {pendingCount} unreviewed file(s) as approved</span>
+                    </label>
+                  )}
+                  {userVerdictType === 'partial' && (
+                    <p className="text-[11px] text-[#D08A29] pt-1 border-t border-[#E6E0D5]/60">
+                      Submits your feedback for the {reviewedCount} reviewed file(s) while leaving remaining files in pending status.
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -990,17 +1017,10 @@ function AppContent() {
                   </div>
                 </div>
                 <button
-                  onClick={() => {
-                    if (unlockedLevel >= 2) { setLevel(2); setIsProgressOpen(false); }
-                  }}
-                  disabled={unlockedLevel < 2}
-                  className={`px-2.5 py-1 text-xs font-semibold rounded transition-colors ${
-                    unlockedLevel < 2 
-                      ? 'bg-[#F1ECE4] text-[#6B635A] cursor-not-allowed opacity-50'
-                      : 'bg-[#F9F6F0] hover:bg-[#E6E0D5] text-[#242220] cursor-pointer'
-                  }`}
+                  onClick={() => { setLevel(2); setIsProgressOpen(false); }}
+                  className="px-2.5 py-1 text-xs font-semibold rounded bg-[#F9F6F0] hover:bg-[#E6E0D5] text-[#242220] transition-colors cursor-pointer"
                 >
-                  {level === 2 ? "Active" : unlockedLevel < 2 ? "Locked" : "Jump to L2"}
+                  {level === 2 ? "Active" : "Jump to L2"}
                 </button>
               </div>
 
@@ -1018,17 +1038,10 @@ function AppContent() {
                   </div>
                 </div>
                 <button
-                  onClick={() => {
-                    if (unlockedLevel >= 3) { setLevel(3); setIsProgressOpen(false); }
-                  }}
-                  disabled={unlockedLevel < 3}
-                  className={`px-2.5 py-1 text-xs font-semibold rounded transition-colors ${
-                    unlockedLevel < 3 
-                      ? 'bg-[#F1ECE4] text-[#6B635A] cursor-not-allowed opacity-50'
-                      : 'bg-[#F9F6F0] hover:bg-[#E6E0D5] text-[#242220] cursor-pointer'
-                  }`}
+                  onClick={() => { setLevel(3); setIsProgressOpen(false); }}
+                  className="px-2.5 py-1 text-xs font-semibold rounded bg-[#F9F6F0] hover:bg-[#E6E0D5] text-[#242220] transition-colors cursor-pointer"
                 >
-                  {level === 3 ? "Active" : unlockedLevel < 3 ? "Locked" : "Jump to L3"}
+                  {level === 3 ? "Active" : "Jump to L3"}
                 </button>
               </div>
 
@@ -1046,17 +1059,10 @@ function AppContent() {
                   </div>
                 </div>
                 <button
-                  onClick={() => {
-                    if (unlockedLevel >= 4) { setLevel(4); setIsProgressOpen(false); }
-                  }}
-                  disabled={unlockedLevel < 4}
-                  className={`px-2.5 py-1 text-xs font-semibold rounded transition-colors ${
-                    unlockedLevel < 4 
-                      ? 'bg-[#F1ECE4] text-[#6B635A] cursor-not-allowed opacity-50'
-                      : 'bg-[#F9F6F0] hover:bg-[#E6E0D5] text-[#242220] cursor-pointer'
-                  }`}
+                  onClick={() => { setLevel(4); setIsProgressOpen(false); }}
+                  className="px-2.5 py-1 text-xs font-semibold rounded bg-[#F9F6F0] hover:bg-[#E6E0D5] text-[#242220] transition-colors cursor-pointer"
                 >
-                  {level === 4 ? "Active" : unlockedLevel < 4 ? "Locked" : "Jump to L4"}
+                  {level === 4 ? "Active" : "Jump to L4"}
                 </button>
               </div>
             </div>

@@ -474,11 +474,11 @@ export default function TestReviewWorkspace({
               <Award className="w-4 h-4" />
             </div>
             <h3 className="text-sm font-bold text-[#242220]">
-              Final Review Milestone Ready
+              Review Verdict & Sign-Off
             </h3>
           </div>
           <p className="text-xs text-[#6B635A]">
-            All code tiers, standards, and test suites are verified. Submit your sign-off report to complete the quest.
+            Submit your full or partial review verdict with optional remarks and handoff notes for your team.
           </p>
         </div>
 
@@ -486,7 +486,7 @@ export default function TestReviewWorkspace({
           onClick={onOpenVerdict}
           className="px-5 py-2.5 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center gap-2 flex-shrink-0 cursor-pointer group"
         >
-          <span>{isVerdictSubmitted ? "View Review Report" : "Submit Final Review Verdict"}</span>
+          <span>{isVerdictSubmitted ? "View Review Report" : "Submit Review Verdict"}</span>
           <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
         </button>
       </div>

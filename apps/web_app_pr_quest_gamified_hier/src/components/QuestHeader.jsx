@@ -38,28 +38,28 @@ export default function QuestHeader({
       name: "1. Spec & Intent", 
       desc: "Verify JIRA criteria",
       statsText: `${completedAcCount}/${totalAcCount} ACs`,
-      isDone: unlockedLevel > 1 || isLevel1Complete
+      isDone: isLevel1Complete
     },
     { 
       num: 2, 
       name: "2. Core Architecture", 
       desc: "Tier 1 logic & standards",
       statsText: `${completedStandardsCount}/${totalStandardsCount} Audited`,
-      isDone: unlockedLevel > 2 || (unlockedLevel >= 2 && isLevel2Complete)
+      isDone: isLevel2Complete
     },
     { 
       num: 3, 
       name: "3. Blast Radius", 
       desc: "Downstream call-sites",
       statsText: `${completedSymbolsCount}/${totalSymbolsCount} Audited`,
-      isDone: unlockedLevel > 3 || (unlockedLevel >= 3 && isLevel3Complete)
+      isDone: isLevel3Complete
     },
     { 
       num: 4, 
       name: "4. Tests & Verdict", 
       desc: "Unit tests & sign-off",
       statsText: `${reviewedCount}/${totalFiles} Reviewed`,
-      isDone: unlockedLevel >= 4 && (isVerdictSubmitted || isLevel4Complete)
+      isDone: isVerdictSubmitted || isLevel4Complete
     }
   ];
 
@@ -126,29 +126,22 @@ export default function QuestHeader({
         </div>
       </div>
 
-      {/* Option B: Smart Slim Level Selector Tabs */}
+      {/* Smart Slim Level Selector Tabs - Freely accessible */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-3 pt-3 border-t border-[#F1ECE4]">
         {levels.map((lvl) => {
           const isActive = level === lvl.num;
-          const isLocked = lvl.num > unlockedLevel;
-          const isCompleted = !isLocked && lvl.isDone;
+          const isCompleted = lvl.isDone;
 
           return (
-            <div key={lvl.num} className="relative group">
+            <div key={lvl.num} className="relative">
               <button
-                onClick={() => {
-                  if (!isLocked) {
-                    setLevel(lvl.num);
-                  }
-                }}
-                className={`w-full text-left px-3 py-2 rounded-xl border transition-all ${
+                onClick={() => setLevel(lvl.num)}
+                className={`w-full text-left px-3 py-2 rounded-xl border transition-all cursor-pointer ${
                   isActive 
-                    ? 'bg-[#FFFDF9] border-[#C35832] ring-2 ring-[#C35832]/25 shadow-xs cursor-default' 
+                    ? 'bg-[#FFFDF9] border-[#C35832] ring-2 ring-[#C35832]/25 shadow-xs' 
                     : isCompleted
-                      ? 'bg-[#F4F8F5] border-[#4F6D56]/30 text-[#4F6D56] hover:bg-white cursor-pointer'
-                      : isLocked
-                        ? 'bg-[#F9F6F0]/60 border-[#E6E0D5] opacity-65 cursor-not-allowed'
-                        : 'bg-[#F9F6F0] border-[#E6E0D5] hover:bg-white cursor-pointer'
+                      ? 'bg-[#F4F8F5] border-[#4F6D56]/30 text-[#4F6D56] hover:bg-white'
+                      : 'bg-[#F9F6F0] border-[#E6E0D5] hover:bg-white hover:border-[#C35832]/30'
                 }`}
               >
                 <div className="flex items-center justify-between gap-1.5">
@@ -160,10 +153,6 @@ export default function QuestHeader({
                   {isCompleted ? (
                     <span className="text-[10px] font-bold bg-[#4F6D56] text-white px-2 py-0.5 rounded-full flex items-center gap-1 shadow-2xs flex-shrink-0">
                       <CheckCircle className="w-3 h-3" /> Done
-                    </span>
-                  ) : isLocked ? (
-                    <span className="text-[9px] text-[#8C827A] bg-[#F1ECE4] px-1.5 py-0.5 rounded font-semibold flex items-center gap-1 flex-shrink-0">
-                      🔒 Locked
                     </span>
                   ) : (
                     <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full border flex-shrink-0 ${
@@ -177,41 +166,6 @@ export default function QuestHeader({
                 </div>
                 <div className="text-[10px] text-[#6B635A] truncate mt-0.5">{lvl.desc}</div>
               </button>
-
-              {/* Checklist Guide Hover Popover on Locked Tab */}
-              {isLocked && (
-                <div className="absolute left-0 top-full mt-2 w-72 bg-white border border-[#E6E0D5] rounded-xl p-3.5 shadow-xl z-50 invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all pointer-events-none">
-                  <div className="flex items-center gap-1.5 font-bold text-xs text-[#242220] pb-2 border-b border-[#F1ECE4]">
-                    <Award className="w-3.5 h-3.5 text-[#D08A29]" />
-                    <span>
-                      {lvl.num === 2 ? 'Level 1 Checklist Guide' :
-                       lvl.num === 3 ? 'Level 2 Checklist Guide' :
-                       'Level 3 Checklist Guide'}
-                    </span>
-                  </div>
-                  <ul className="text-[11px] text-[#6B635A] mt-2 space-y-1.5 list-disc list-inside leading-snug">
-                    {lvl.num === 2 ? (
-                      <>
-                        <li>Check off each AC as you verify code in the middle panel.</li>
-                        <li>Click sliced AC filter pills above to isolate relevant diff hunks.</li>
-                      </>
-                    ) : lvl.num === 3 ? (
-                      <>
-                        <li>Audit each Tier 1 architecture standard from docs/standards.</li>
-                        <li>Inspect the net architectural diagram and verify state flows.</li>
-                      </>
-                    ) : (
-                      <>
-                        <li>Audit function call blast radii in the right inspector panel.</li>
-                        <li>Verify downstream consumer integrations and imports.</li>
-                      </>
-                    )}
-                  </ul>
-                  <div className="mt-2.5 pt-2 border-t border-[#F1ECE4] text-[10px] text-[#C35832] font-semibold">
-                    Complete Level {lvl.num - 1} milestone to unlock
-                  </div>
-                </div>
-              )}
             </div>
           );
         })}

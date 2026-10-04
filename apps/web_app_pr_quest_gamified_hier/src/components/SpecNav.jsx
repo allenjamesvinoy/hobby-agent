@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CheckSquare, Square, Plus, Award, ArrowRight } from 'lucide-react';
+import { CheckSquare, Square, Plus } from 'lucide-react';
 
 export default function SpecNav({ 
   jiraTicket, 
@@ -175,49 +175,6 @@ export default function SpecNav({
             Add
           </button>
         </form>
-      </div>
-
-      {/* Level 1 Next Progression Action with Hover Guide Popover */}
-      <div className="mt-3 pt-3 border-t border-[#E6E0D5]">
-        {isLevelComplete ? (
-          <button
-            onClick={onProceedNextLevel}
-            className="w-full py-2.5 px-3 bg-[#4F6D56] hover:bg-[#3D5442] text-white rounded-xl text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-1.5 animate-pulse cursor-pointer"
-          >
-            <span>Proceed to Level 2: Core Architecture</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        ) : (
-          <div className="relative group">
-            <button
-              type="button"
-              className="w-full py-2.5 px-3 bg-[#F9F6F0] hover:bg-[#F1ECE4] border border-[#E6E0D5] text-[#8C827A] rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-not-allowed opacity-90 shadow-2xs"
-            >
-              <span>Next: Level 2 (Locked)</span>
-              <span className="text-xs">🔒</span>
-            </button>
-
-            {/* Level 1 Checklist Guide Popover */}
-            <div className="absolute left-0 right-0 bottom-full mb-2 bg-white border border-[#E6E0D5] rounded-xl p-3.5 shadow-xl z-50 invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all pointer-events-none">
-              <div className="flex items-center gap-1.5 font-bold text-xs text-[#242220] pb-2 border-b border-[#F1ECE4]">
-                <Award className="w-3.5 h-3.5 text-[#D08A29]" />
-                <span>Level 1 Checklist Guide</span>
-              </div>
-              <ul className="text-[11px] text-[#6B635A] mt-2 space-y-1.5 list-disc list-inside leading-snug">
-                <li>Check off each AC as you verify code in the middle panel.</li>
-                <li>Click sliced AC filter pills above to isolate relevant diff hunks.</li>
-              </ul>
-              <div className="mt-2.5 pt-2 border-t border-[#F1ECE4] flex items-center justify-between text-[10px]">
-                <span className="text-[#C35832] font-bold">
-                  {jiraTicket.criteria.filter(c => c.completed).length}/{jiraTicket.criteria.length} ACs completed
-                </span>
-                <span className="text-[#6B635A]">
-                  Verify all to unlock Level 2
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Import Modal */}
