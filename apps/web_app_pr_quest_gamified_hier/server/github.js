@@ -3,6 +3,14 @@
  * and PR-head repository context docs (ARCHITECTURE / CONTEXT / PRODUCT).
  */
 
+import { 
+  synthesizeCriteria, 
+  synthesizeStandards, 
+  synthesizeTestSuites, 
+  synthesizeArchitectureDiagram,
+  extractMarkdownChecklist 
+} from './heuristicSynthesizer.js';
+
 const GITHUB_API = 'https://api.github.com';
 const MAX_CRITERIA = 8;
 const MAX_STANDARDS = 8;
@@ -525,6 +533,34 @@ function buildArchitectureText(repoDocs) {
 }
 
 /**
+ * Fetch a GitHub Issue by number, extracting criteria and issue state.
+ */
+export async function fetchGithubIssue(owner, repo, issueNumber, accessToken) {
+  try {
+    const issue = await githubFetch(
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/issues/${encodeURIComponent(issueNumber)}`,
+      accessToken
+    );
+    const body = issue.body || '';
+    const checklist = extractMarkdownChecklist(body);
+
+    return {
+      number: issue.number,
+      title: issue.title,
+      body,
+      state: issue.state,
+      htmlUrl: issue.html_url,
+      labels: (issue.labels || []).map(l => (typeof l === 'string' ? l : l.name)),
+      author: issue.user?.login || 'unknown',
+      checklist
+    };
+  } catch (err) {
+    console.warn(`[github] Failed to fetch issue #${issueNumber}:`, err.message);
+    return null;
+  }
+}
+
+/**
  * Fetch PR metadata + changed files with parsed diffs for the review workspace,
  * plus PR-head repo docs seeded into Level 1 / Level 2.
  */
@@ -546,12 +582,32 @@ export async function fetchPullRequestWorkspace(owner, repo, number, accessToken
     }
   }
 
+  const bodyPreview = (pr.body || '').trim();
+
+  // 1. Check for linked GitHub issue in PR body (e.g. Fixes #12, Closes #45)
+  let linkedIssue = null;
+  const issueMatch = bodyPreview.match(/(?:fixes|closes|resolves|issue|ref|refs|see)\s*[:#]?\s*(?:https:\/\/github\.com\/[^/]+\/[^/]+\/issues\/)?(\d+)/i);
+  if (issueMatch && issueMatch[1]) {
+    linkedIssue = await fetchGithubIssue(owner, repo, issueMatch[1], accessToken);
+  }
+
+  // 2. Synthesize criteria & file tags (using issue if available, else PR body & files)
+  const synthCriteria = synthesizeCriteria({
+    prTitle: pr.title,
+    prBody: bodyPreview,
+    issueBody: linkedIssue?.body || '',
+    files
+  });
+
+  const criteria = synthCriteria.criteria;
+  const fileSpecTags = synthCriteria.fileSpecTags || {};
+
   const mappedFiles = files.map((f, idx) => ({
     id: `gh-${number}-file-${idx + 1}`,
     path: f.filename,
     tier: inferTier(f.filename, f.additions, f.deletions),
     importance: inferImportance(f.filename, f.additions, f.deletions),
-    specTag: 'ALL',
+    specTag: fileSpecTags[f.filename] || 'ALL',
     status: 'pending',
     comments: [],
     status_github: f.status,
@@ -560,10 +616,17 @@ export async function fetchPullRequestWorkspace(owner, repo, number, accessToken
     diffChunks: parsePatchToChunks(f.patch)
   }));
 
-  const bodyPreview = (pr.body || '').trim();
-  const criteria = buildCriteriaFromDocs(pr.title, bodyPreview, repoDocs);
-  const standards = buildStandardsFromDocs(repoDocs);
+  // 3. Synthesize standards & architecture text
+  const docStandards = buildStandardsFromDocs(repoDocs);
+  const standards = (docStandards && docStandards.length > 0)
+    ? docStandards
+    : synthesizeStandards(files);
+
   const architectureText = buildArchitectureText(repoDocs);
+
+  // 4. Synthesize test suites & diagram model
+  const testSuites = synthesizeTestSuites(files, pr.title);
+  const architectureDiagramModel = synthesizeArchitectureDiagram(mappedFiles, pr.title);
 
   return {
     queryId: `GH-${owner}/${repo}#${pr.number}`,
@@ -574,15 +637,24 @@ export async function fetchPullRequestWorkspace(owner, repo, number, accessToken
     htmlUrl: pr.html_url,
     user: pr.user?.login || 'unknown',
     jiraTicket: {
-      id: `${owner}/${repo}#${pr.number}`,
-      title: pr.title,
-      description: bodyPreview || `Open pull request #${pr.number} from ${pr.user?.login || 'unknown'} against ${pr.base?.ref || 'main'}.`,
-      criteria
+      id: linkedIssue ? `#${linkedIssue.number}` : `${owner}/${repo}#${pr.number}`,
+      title: linkedIssue ? linkedIssue.title : pr.title,
+      description: linkedIssue?.body || bodyPreview || `Open pull request #${pr.number} from ${pr.user?.login || 'unknown'} against ${pr.base?.ref || 'main'}.`,
+      criteria,
+      linkedIssue: linkedIssue ? {
+        number: linkedIssue.number,
+        title: linkedIssue.title,
+        htmlUrl: linkedIssue.htmlUrl,
+        author: linkedIssue.author
+      } : null
     },
     files: mappedFiles,
     repoDocs,
     architectureText,
     standards,
+    testSuites,
+    architectureDiagramModel,
+    fileSpecTags,
     meta: {
       draft: Boolean(pr.draft),
       base: pr.base?.ref,
@@ -592,7 +664,16 @@ export async function fetchPullRequestWorkspace(owner, repo, number, accessToken
       updatedAt: pr.updated_at,
       additions: pr.additions,
       deletions: pr.deletions,
-      changedFiles: pr.changed_files
+      changedFiles: pr.changed_files,
+      linkedIssue: linkedIssue ? {
+        number: linkedIssue.number,
+        title: linkedIssue.title,
+        htmlUrl: linkedIssue.htmlUrl,
+        author: linkedIssue.author
+      } : null,
+      testSuites,
+      architectureDiagramModel,
+      fileSpecTags
     }
   };
 }

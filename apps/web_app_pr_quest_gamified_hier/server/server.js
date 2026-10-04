@@ -10,6 +10,7 @@ import {
   parseGithubQueryId,
   listOpenPullRequests,
   fetchPullRequestWorkspace,
+  fetchGithubIssue,
   buildOAuthAuthorizeUrl,
   exchangeOAuthCode,
   getAuthenticatedUser,
@@ -17,6 +18,18 @@ import {
   postPullRequestComment,
   submitPullRequestReview
 } from './github.js';
+import {
+  analyzeArchitectureDiff,
+  structureIssueCriteria,
+  deriveSymbolsAndTests,
+  resolveGeminiApiKey
+} from './gemini.js';
+import {
+  synthesizeCriteria,
+  synthesizeStandards,
+  synthesizeArchitectureDiagram,
+  synthesizeTestSuites
+} from './heuristicSynthesizer.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -353,6 +366,307 @@ app.get('/api/github/pr/:owner/:repo/:number', async (req, res) => {
   }
 });
 
+// --- Gemini AI Status & Key Endpoints ---
+app.get('/api/gemini/status', (req, res) => {
+  const envKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
+  const dbKey = db.getSetting('gemini_api_key') || '';
+  const configured = Boolean(envKey || dbKey);
+  const source = envKey ? 'env' : dbKey ? 'database' : 'none';
+  res.json({ configured, source });
+});
+
+app.post('/api/gemini/key', (req, res) => {
+  const apiKey = (req.body?.apiKey || '').trim();
+  if (!apiKey) {
+    return res.status(400).json({ error: 'API key is required' });
+  }
+  db.setSetting('gemini_api_key', apiKey);
+  res.json({ success: true, configured: true, source: 'database' });
+});
+
+// --- Link a GitHub Issue to Query (Level 1 Acceptance Criteria) ---
+app.post('/api/github/link-issue', async (req, res) => {
+  try {
+    const { queryId, issueNumberOrUrl } = req.body || {};
+    if (!queryId || !issueNumberOrUrl) {
+      return res.status(400).json({ error: 'queryId and issueNumberOrUrl are required' });
+    }
+
+    const userId = resolveUserId(req);
+    const accessToken = getLinkedToken(userId);
+
+    let owner = '';
+    let repo = '';
+    let issueNumber = null;
+
+    const urlMatch = String(issueNumberOrUrl).match(/github\.com\/([^/]+)\/([^/]+)\/issues\/(\d+)/i);
+    if (urlMatch) {
+      owner = urlMatch[1];
+      repo = urlMatch[2];
+      issueNumber = Number(urlMatch[3]);
+    } else {
+      const numMatch = String(issueNumberOrUrl).match(/#?(\d+)/);
+      if (numMatch) {
+        issueNumber = Number(numMatch[1]);
+      }
+      const qMatch = String(queryId).match(/^GH-([^/]+)\/([^#]+)#/);
+      if (qMatch) {
+        owner = qMatch[1];
+        repo = qMatch[2];
+      }
+    }
+
+    if (!owner || !repo || !issueNumber) {
+      return res.status(400).json({ error: 'Could not resolve owner, repo, and issue number. Provide URL or #number' });
+    }
+
+    const issue = await fetchGithubIssue(owner, repo, issueNumber, accessToken);
+    if (!issue) {
+      return res.status(404).json({ error: `GitHub Issue #${issueNumber} not found in ${owner}/${repo}` });
+    }
+
+    const currentQuery = db.getQuery(userId, queryId);
+    const files = currentQuery?.files || [];
+    const meta = currentQuery?.meta || {};
+
+    const geminiKey = resolveGeminiApiKey(null, db.getSetting('gemini_api_key'));
+    let criteria = [];
+    let fileSpecTags = {};
+
+    if (geminiKey) {
+      try {
+        const geminiRes = await structureIssueCriteria({
+          issueNumber: issue.number,
+          issueTitle: issue.title,
+          issueBody: issue.body,
+          files,
+          apiKey: geminiKey
+        });
+        if (Array.isArray(geminiRes?.criteria) && geminiRes.criteria.length > 0) {
+          criteria = geminiRes.criteria;
+          fileSpecTags = geminiRes.fileSpecTags || {};
+        }
+      } catch (geminiErr) {
+        console.warn('[Gemini] structureIssueCriteria failed, falling back:', geminiErr.message);
+      }
+    }
+
+    if (criteria.length === 0) {
+      const synth = synthesizeCriteria({
+        prTitle: currentQuery?.title || '',
+        prBody: meta?.description || '',
+        issueBody: issue.body,
+        files
+      });
+      criteria = synth.criteria;
+      fileSpecTags = synth.fileSpecTags || {};
+    }
+
+    const updatedFiles = files.map(f => ({
+      ...f,
+      specTag: fileSpecTags[f.path] || f.specTag || 'ALL'
+    }));
+
+    const nextJiraTicket = {
+      id: `#${issue.number}`,
+      title: issue.title,
+      description: issue.body || `GitHub Issue #${issue.number}`,
+      criteria,
+      linkedIssue: {
+        number: issue.number,
+        title: issue.title,
+        htmlUrl: issue.htmlUrl,
+        author: issue.author
+      }
+    };
+
+    const nextMeta = {
+      ...meta,
+      jiraTicket: nextJiraTicket,
+      linkedIssue: nextJiraTicket.linkedIssue,
+      fileSpecTags
+    };
+
+    db.saveQuery(queryId, currentQuery?.title, updatedFiles, currentQuery?.verdicts || [], nextMeta);
+
+    res.json({
+      success: true,
+      jiraTicket: nextJiraTicket,
+      files: updatedFiles,
+      fileSpecTags
+    });
+  } catch (err) {
+    console.error('[API] link-issue failed:', err);
+    res.status(500).json({ error: err.message || 'Failed to link GitHub issue' });
+  }
+});
+
+// --- Upload architecture.md & Run Gemini Architecture Diff Analysis (Level 2) ---
+app.post('/api/architecture/upload', async (req, res) => {
+  try {
+    const { queryId, fileName = 'architecture.md', content = '' } = req.body || {};
+    if (!queryId || !content.trim()) {
+      return res.status(400).json({ error: 'queryId and file content are required' });
+    }
+
+    const userId = resolveUserId(req);
+    const currentQuery = db.getQuery(userId, queryId);
+    const files = currentQuery?.files || [];
+    const meta = currentQuery?.meta || {};
+
+    const prDiffs = files.map(f => ({
+      path: f.path,
+      patch: (f.diffChunks || []).map(c => (c.lines || []).map(l => l.text).join('\n')).join('\n')
+    }));
+
+    const geminiKey = resolveGeminiApiKey(null, db.getSetting('gemini_api_key'));
+    let standards = [];
+    let architectureDiff = null;
+    let architectureSummary = '';
+
+    if (geminiKey) {
+      try {
+        const geminiRes = await analyzeArchitectureDiff({
+          architectureDoc: content,
+          prDiffs,
+          files,
+          prTitle: currentQuery?.title || '',
+          apiKey: geminiKey
+        });
+
+        if (geminiRes) {
+          standards = geminiRes.standards || [];
+          architectureDiff = {
+            nodes: geminiRes.nodes || [],
+            edges: geminiRes.edges || []
+          };
+          architectureSummary = geminiRes.summary || '';
+        }
+      } catch (geminiErr) {
+        console.warn('[Gemini] analyzeArchitectureDiff failed, falling back:', geminiErr.message);
+      }
+    }
+
+    if (standards.length === 0) {
+      standards = synthesizeStandards(files);
+      architectureDiff = synthesizeArchitectureDiagram(files, currentQuery?.title || '');
+      architectureSummary = `# Architecture Analysis\n\nUploaded \`${fileName}\` analyzed against PR changes.`;
+    }
+
+    const prevDocs = currentQuery?.repoDocs || meta.repoDocs || [];
+    const updatedDocs = [
+      { role: 'architecture', path: fileName, content, changedInPr: false },
+      ...prevDocs.filter(d => d.role !== 'architecture')
+    ];
+
+    const nextMeta = {
+      ...meta,
+      standards,
+      architectureText: content,
+      architectureSummary,
+      architectureDiagramModel: architectureDiff,
+      repoDocs: updatedDocs
+    };
+
+    db.saveQuery(queryId, currentQuery?.title, files, currentQuery?.verdicts || [], nextMeta);
+
+    res.json({
+      success: true,
+      standards,
+      architectureText: content,
+      architectureSummary,
+      diagramModel: architectureDiff,
+      repoDocs: updatedDocs
+    });
+  } catch (err) {
+    console.error('[API] architecture/upload failed:', err);
+    res.status(500).json({ error: err.message || 'Failed to upload architecture document' });
+  }
+});
+
+// --- On-Demand Full Gemini AI Autopopulate for PR Query ---
+app.post('/api/github/ai-populate', async (req, res) => {
+  try {
+    const { queryId } = req.body || {};
+    if (!queryId) return res.status(400).json({ error: 'queryId is required' });
+
+    const userId = resolveUserId(req);
+    const currentQuery = db.getQuery(userId, queryId);
+    if (!currentQuery) return res.status(404).json({ error: 'Query not found' });
+
+    const files = currentQuery.files || [];
+    const meta = currentQuery.meta || {};
+    const geminiKey = resolveGeminiApiKey(null, db.getSetting('gemini_api_key'));
+
+    if (!geminiKey) {
+      return res.status(400).json({ error: 'Gemini API key is not configured' });
+    }
+
+    const prDiffs = files.map(f => ({
+      path: f.path,
+      patch: (f.diffChunks || []).map(c => (c.lines || []).map(l => l.text).join('\n')).join('\n')
+    }));
+
+    const archDoc = currentQuery.architectureText || (meta.repoDocs || []).find(d => d.role === 'architecture')?.content || '';
+
+    const [archRes, symbolsAndTestsRes] = await Promise.allSettled([
+      archDoc ? analyzeArchitectureDiff({
+        architectureDoc: archDoc,
+        prDiffs,
+        files,
+        prTitle: currentQuery.title,
+        apiKey: geminiKey
+      }) : Promise.resolve(null),
+      deriveSymbolsAndTests({
+        files,
+        prTitle: currentQuery.title,
+        prBody: meta.description || '',
+        criteria: currentQuery.jiraTicket?.criteria || [],
+        apiKey: geminiKey
+      })
+    ]);
+
+    let standards = currentQuery.standards;
+    let architectureDiff = meta.architectureDiagramModel;
+    let architectureSummary = meta.architectureSummary;
+    if (archRes.status === 'fulfilled' && archRes.value) {
+      standards = archRes.value.standards || standards;
+      architectureDiff = { nodes: archRes.value.nodes || [], edges: archRes.value.edges || [] };
+      architectureSummary = archRes.value.summary || architectureSummary;
+    }
+
+    let symbolCatalog = meta.symbolCatalog || null;
+    let testSuites = currentQuery.testSuites || meta.testSuites || null;
+    if (symbolsAndTestsRes.status === 'fulfilled' && symbolsAndTestsRes.value) {
+      symbolCatalog = symbolsAndTestsRes.value.symbolCatalog || symbolCatalog;
+      testSuites = symbolsAndTestsRes.value.testSuites || testSuites;
+    }
+
+    const nextMeta = {
+      ...meta,
+      standards,
+      architectureDiagramModel: architectureDiff,
+      architectureSummary,
+      symbolCatalog,
+      testSuites
+    };
+
+    db.saveQuery(queryId, currentQuery.title, files, currentQuery.verdicts || [], nextMeta);
+
+    res.json({
+      success: true,
+      standards,
+      diagramModel: architectureDiff,
+      symbolCatalog,
+      testSuites,
+      architectureSummary
+    });
+  } catch (err) {
+    console.error('[API] ai-populate failed:', err);
+    res.status(500).json({ error: err.message || 'AI population failed' });
+  }
+});
+
 app.post('/api/github/comment', async (req, res) => {
   const userId = resolveUserId(req);
   if (!userId) return res.status(401).json({ error: 'Sign in required' });
@@ -509,6 +823,10 @@ app.get('/api/state', (req, res) => {
     standards: queryRecord.standards,
     architectureText: queryRecord.architectureText,
     repoDocs: queryRecord.repoDocs,
+    testSuites: queryRecord.testSuites || queryRecord.meta?.testSuites,
+    architectureDiagramModel: queryRecord.architectureDiagramModel || queryRecord.meta?.architectureDiagramModel,
+    symbolCatalog: queryRecord.symbolCatalog || queryRecord.meta?.symbolCatalog,
+    architectureSummary: queryRecord.architectureSummary || queryRecord.meta?.architectureSummary,
     meta: queryRecord.meta,
     userProgress,
     updatedAt: queryRecord.updatedAt
@@ -527,12 +845,19 @@ app.post('/api/state', (req, res) => {
     const queryTitle = title || state.title || `PR #${queryId}`;
     const queryFiles = state.files || [];
     const queryVerdicts = state.verdicts || [];
+    const currentQuery = db.getQuery(userId, queryId);
+    const prevMeta = currentQuery?.meta || {};
     const meta = {
-      jiraTicket: state.jiraTicket,
-      standards: state.standards,
-      architectureText: state.architectureText,
-      repoDocs: state.repoDocs,
-      githubMeta: state.githubMeta || state.meta
+      ...prevMeta,
+      jiraTicket: state.jiraTicket ?? prevMeta.jiraTicket,
+      standards: state.standards ?? prevMeta.standards,
+      architectureText: state.architectureText ?? prevMeta.architectureText,
+      repoDocs: state.repoDocs ?? prevMeta.repoDocs,
+      testSuites: state.testSuites ?? prevMeta.testSuites,
+      architectureDiagramModel: state.architectureDiagramModel ?? prevMeta.architectureDiagramModel,
+      symbolCatalog: state.symbolCatalog ?? prevMeta.symbolCatalog,
+      architectureSummary: state.architectureSummary ?? prevMeta.architectureSummary,
+      githubMeta: state.githubMeta || state.meta || prevMeta.githubMeta
     };
     db.saveQuery(queryId, queryTitle, queryFiles, queryVerdicts, meta);
   } else if (files) {

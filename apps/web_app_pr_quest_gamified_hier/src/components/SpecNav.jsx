@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CheckSquare, Square, Plus } from 'lucide-react';
+import { CheckSquare, Square, Plus, Link2, Loader2, GitPullRequest, ExternalLink } from 'lucide-react';
 
 export default function SpecNav({ 
   jiraTicket, 
@@ -8,12 +8,17 @@ export default function SpecNav({
   setSelectedSpec, 
   onAddXp,
   isLevelComplete = false,
-  onProceedNextLevel
+  onProceedNextLevel,
+  onLinkGithubIssue,
+  isLinkingIssue = false
 }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newAcText, setNewAcText] = useState('');
   const [customTicketTitle, setCustomTicketTitle] = useState('');
   const [customTicketDesc, setCustomTicketDesc] = useState('');
+  const [showIssueInput, setShowIssueInput] = useState(false);
+  const [issueInput, setIssueInput] = useState('');
+  const [linkError, setLinkError] = useState('');
 
   const toggleAc = (id) => {
     const updatedCriteria = jiraTicket.criteria.map(ac => {
@@ -42,6 +47,19 @@ export default function SpecNav({
     onAddXp(10, `Added Custom Acceptance Criterion ${nextId}`, `add-custom-ac-${nextId}`);
   };
 
+  const handleLinkSubmit = async (e) => {
+    e.preventDefault();
+    if (!issueInput.trim() || !onLinkGithubIssue) return;
+    setLinkError('');
+    const res = await onLinkGithubIssue(issueInput.trim());
+    if (res?.success) {
+      setShowIssueInput(false);
+      setIssueInput('');
+    } else {
+      setLinkError(res?.error || 'Failed to link GitHub issue');
+    }
+  };
+
   const handleImportTicket = (e) => {
     e.preventDefault();
     if (!customTicketTitle.trim()) return;
@@ -61,6 +79,8 @@ export default function SpecNav({
     onAddXp(50, "Imported Custom JIRA Story");
   };
 
+  const linkedIssue = jiraTicket?.linkedIssue;
+
   return (
     <div className="bg-white border border-[#E6E0D5] rounded-xl p-4 shadow-sm flex flex-col">
       {/* JIRA Ticket Header */}
@@ -69,13 +89,82 @@ export default function SpecNav({
           <span className="text-xs font-bold text-[#C35832] bg-[#FBEFEF] px-2 py-0.5 rounded border border-[#C35832]/20 font-mono">
             {jiraTicket.id}
           </span>
-          <button 
-            onClick={() => setShowAddModal(true)}
-            className="text-xs text-[#C35832] hover:text-[#A84725] font-semibold flex items-center gap-1 cursor-pointer transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" /> Import Story
-          </button>
+          <div className="flex items-center gap-2">
+            {onLinkGithubIssue && (
+              <button 
+                type="button"
+                onClick={() => { setShowIssueInput(!showIssueInput); setLinkError(''); }}
+                className="text-xs text-[#4F6D56] hover:text-[#3D5442] font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                title="Pull Acceptance Criteria directly from a GitHub Issue"
+              >
+                <GitPullRequest className="w-3.5 h-3.5" />
+                <span>{linkedIssue ? 'Change Issue' : 'Link Issue'}</span>
+              </button>
+            )}
+            <button 
+              onClick={() => setShowAddModal(true)}
+              className="text-xs text-[#C35832] hover:text-[#A84725] font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" /> Import Story
+            </button>
+          </div>
         </div>
+
+        {/* Linked GitHub Issue Badge */}
+        {linkedIssue && !showIssueInput && (
+          <div className="mt-2 flex items-center justify-between px-2.5 py-1.5 bg-[#F4F8F5] border border-[#4F6D56]/30 rounded-lg text-xs">
+            <div className="flex items-center gap-1.5 overflow-hidden">
+              <GitPullRequest className="w-3.5 h-3.5 text-[#4F6D56] shrink-0" />
+              <span className="font-bold text-[#4F6D56]">Linked Issue #{linkedIssue.number}</span>
+              <span className="text-[#6B635A] truncate">{linkedIssue.title}</span>
+            </div>
+            {linkedIssue.htmlUrl && (
+              <a 
+                href={linkedIssue.htmlUrl} 
+                target="_blank" 
+                rel="noreferrer"
+                className="text-[#4F6D56] hover:text-[#3D5442] ml-1 shrink-0"
+                title="View issue on GitHub"
+              >
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
+          </div>
+        )}
+
+        {/* Link Issue Input Form */}
+        {showIssueInput && (
+          <form onSubmit={handleLinkSubmit} className="mt-2.5 space-y-1">
+            <div className="flex gap-1.5">
+              <input
+                type="text"
+                placeholder="Issue # (e.g. 42 or URL)..."
+                value={issueInput}
+                onChange={(e) => setIssueInput(e.target.value)}
+                disabled={isLinkingIssue}
+                className="flex-1 bg-[#F9F6F0] border border-[#E6E0D5] rounded px-2.5 py-1 text-xs font-mono focus:outline-none focus:border-[#C35832]"
+              />
+              <button
+                type="submit"
+                disabled={isLinkingIssue || !issueInput.trim()}
+                className="bg-[#C35832] hover:bg-[#A84725] text-white px-2.5 py-1 rounded text-xs font-bold transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1"
+              >
+                {isLinkingIssue ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Fetch ACs'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowIssueInput(false); setLinkError(''); }}
+                className="px-2 py-1 text-xs border border-[#E6E0D5] rounded text-[#6B635A] hover:bg-[#F9F6F0]"
+              >
+                ✕
+              </button>
+            </div>
+            {linkError && (
+              <p className="text-[11px] text-[#C35832] font-medium">{linkError}</p>
+            )}
+          </form>
+        )}
+
         <h2 className="text-sm font-bold text-[#242220] mt-2 leading-snug">
           {jiraTicket.title}
         </h2>
@@ -152,7 +241,7 @@ export default function SpecNav({
               <div className="text-xs leading-relaxed">
                 <span className="font-bold mr-1">{ac.id}:</span>
                 <span className={ac.completed ? 'line-through opacity-75' : ''}>
-                  {ac.text}
+                  {ac.title || ac.text || ac.description}
                 </span>
               </div>
             </div>

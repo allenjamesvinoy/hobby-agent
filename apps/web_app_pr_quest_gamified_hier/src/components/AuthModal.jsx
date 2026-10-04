@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, Shield, Key, LogIn, UserPlus, Check, X, Sparkles, Github, KeyRound, Loader2, Unlink } from 'lucide-react';
+import { User, Shield, Key, LogIn, UserPlus, Check, X, Sparkles, Github, KeyRound, Loader2, Unlink, ExternalLink } from 'lucide-react';
 import { PRESET_USERS } from '../services/apiClient';
 
 export default function AuthModal({
@@ -13,7 +13,9 @@ export default function AuthModal({
   githubStatus = null,
   onLinkGithubToken,
   onUnlinkGithub,
-  onLinkGithubOAuth
+  onLinkGithubOAuth,
+  geminiStatus = null,
+  onSaveGeminiKey
 }) {
   const [tab, setTab] = useState('personas'); // 'personas' | 'login' | 'register'
   const [username, setUsername] = useState('');
@@ -24,6 +26,10 @@ export default function AuthModal({
   const [patToken, setPatToken] = useState('');
   const [patError, setPatError] = useState('');
   const [githubBusy, setGithubBusy] = useState(false);
+  const [showGeminiForm, setShowGeminiForm] = useState(false);
+  const [geminiKeyInput, setGeminiKeyInput] = useState('');
+  const [geminiBusy, setGeminiBusy] = useState(false);
+  const [geminiMsg, setGeminiMsg] = useState('');
 
   if (!isOpen) return null;
 
@@ -39,6 +45,22 @@ export default function AuthModal({
     } else {
       setShowPatForm(false);
       setPatToken('');
+    }
+  };
+
+  const handleGeminiSubmit = async (e) => {
+    e.preventDefault();
+    if (!geminiKeyInput.trim() || !onSaveGeminiKey) return;
+    setGeminiBusy(true);
+    setGeminiMsg('');
+    const res = await onSaveGeminiKey(geminiKeyInput.trim());
+    setGeminiBusy(false);
+    if (res?.success) {
+      setGeminiMsg('Key saved successfully! ✨');
+      setShowGeminiForm(false);
+      setGeminiKeyInput('');
+    } else {
+      setGeminiMsg(res?.error || 'Failed to save Gemini key');
     }
   };
 
@@ -194,6 +216,70 @@ export default function AuthModal({
                     Or continue with GitHub OAuth →
                   </button>
                 )}
+              </form>
+            )}
+          </div>
+
+          {/* Gemini AI Settings Card */}
+          <div className="bg-[#FFFDF9] border border-[#E6E0D5] rounded-xl p-3 space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-full bg-[#D08A29]/15 text-[#D08A29] flex items-center justify-center shrink-0">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[11px] font-bold text-[#242220]">
+                    {geminiStatus?.configured
+                      ? `Gemini AI Engine: Active (${geminiStatus.source === 'env' ? 'Environment' : 'Configured'})`
+                      : 'Gemini AI Engine: Not configured'}
+                  </div>
+                  <div className="text-[10px] text-[#6B635A]">
+                    {geminiStatus?.configured
+                      ? 'Powers issue AC extraction, architecture diffs, and blast radius'
+                      : 'Set GEMINI_API_KEY in .env or paste a key below'}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setShowGeminiForm(!showGeminiForm); setGeminiMsg(''); }}
+                className="shrink-0 px-2.5 py-1.5 text-[11px] font-bold border border-[#E6E0D5] bg-white hover:bg-[#F9F6F0] text-[#242220] rounded-lg cursor-pointer flex items-center gap-1"
+              >
+                <KeyRound className="w-3 h-3 text-[#D08A29]" />
+                {geminiStatus?.configured ? 'Key' : 'Add Key'}
+              </button>
+            </div>
+
+            {showGeminiForm && (
+              <form onSubmit={handleGeminiSubmit} className="pt-2 border-t border-[#E6E0D5] space-y-2">
+                <input
+                  type="password"
+                  placeholder="Paste Gemini API key (AIzaSy...)"
+                  value={geminiKeyInput}
+                  onChange={(e) => setGeminiKeyInput(e.target.value)}
+                  className="w-full text-xs p-2.5 bg-white border border-[#E6E0D5] rounded-xl font-mono focus:outline-none focus:ring-1 focus:ring-[#C35832]"
+                />
+                {geminiMsg && (
+                  <p className="text-[11px] font-medium text-[#4F6D56]">{geminiMsg}</p>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={geminiBusy || !geminiKeyInput.trim()}
+                    className="flex-1 py-1.5 text-[11px] font-bold bg-[#C35832] hover:bg-[#A84725] text-white rounded-lg cursor-pointer flex items-center justify-center gap-1 disabled:opacity-50"
+                  >
+                    {geminiBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Save API Key'}
+                  </button>
+                  <a
+                    href="https://aistudio.google.com/app/apikey"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-2.5 py-1.5 text-[11px] font-medium text-[#6B635A] hover:text-[#242220] border border-[#E6E0D5] bg-white rounded-lg cursor-pointer flex items-center gap-1"
+                  >
+                    <span>Get Key</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
               </form>
             )}
           </div>

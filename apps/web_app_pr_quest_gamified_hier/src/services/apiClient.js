@@ -245,6 +245,102 @@ class ApiClient {
     }
   }
 
+  /**
+   * Get Gemini AI configuration status.
+   */
+  async getGeminiStatus() {
+    try {
+      const res = await fetch(`${API_BASE}/gemini/status`, { signal: AbortSignal.timeout(3000) });
+      if (res.ok) {
+        return await res.json();
+      }
+      return { configured: false, source: 'none' };
+    } catch (_) {
+      return { configured: false, source: 'none' };
+    }
+  }
+
+  /**
+   * Save Gemini API key in server DB.
+   */
+  async saveGeminiKey(apiKey) {
+    try {
+      const res = await fetch(`${API_BASE}/gemini/key`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey }),
+        signal: AbortSignal.timeout(5000)
+      });
+      const data = await res.json().catch(() => ({}));
+      return { success: res.ok, ...data };
+    } catch (err) {
+      return { success: false, error: err.message || 'Failed to save Gemini key' };
+    }
+  }
+
+  /**
+   * Link a GitHub Issue directly to a PR query to extract Acceptance Criteria.
+   */
+  async linkGithubIssue(queryId, issueNumberOrUrl) {
+    try {
+      const res = await fetch(`${API_BASE}/github/link-issue`, {
+        method: 'POST',
+        headers: this.authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ queryId, issueNumberOrUrl }),
+        signal: AbortSignal.timeout(30000)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Failed to link GitHub issue' };
+      }
+      return { success: true, ...data };
+    } catch (err) {
+      return { success: false, error: err.message || 'Network error linking issue' };
+    }
+  }
+
+  /**
+   * Upload an architecture.md document and run Gemini architecture diff analysis.
+   */
+  async uploadArchitectureDoc(queryId, fileName, content) {
+    try {
+      const res = await fetch(`${API_BASE}/architecture/upload`, {
+        method: 'POST',
+        headers: this.authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ queryId, fileName, content }),
+        signal: AbortSignal.timeout(45000)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Failed to upload architecture document' };
+      }
+      return { success: true, ...data };
+    } catch (err) {
+      return { success: false, error: err.message || 'Network error uploading architecture' };
+    }
+  }
+
+  /**
+   * Trigger full Gemini AI autopopulate across all 4 review levels.
+   */
+  async triggerAiPopulate(queryId) {
+    try {
+      const res = await fetch(`${API_BASE}/github/ai-populate`, {
+        method: 'POST',
+        headers: this.authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ queryId }),
+        signal: AbortSignal.timeout(45000)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return { success: false, error: data.error || 'AI population failed' };
+      }
+      return { success: true, ...data };
+    } catch (err) {
+      return { success: false, error: err.message || 'Network error during AI population' };
+    }
+  }
+
   async listQueries() {
     try {
       const res = await fetch(`${API_BASE}/queries`, { signal: AbortSignal.timeout(2500) });

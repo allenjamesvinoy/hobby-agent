@@ -10,7 +10,10 @@ import {
   AlertCircle,
   Sparkles,
   ArrowRight,
-  BookOpen
+  BookOpen,
+  FileUp,
+  Loader2,
+  AlertTriangle
 } from 'lucide-react';
 import { symbolCatalog as defaultSymbolCatalog } from '../mockData.js';
 
@@ -20,7 +23,7 @@ export default function DynamicLeftPanel({
   setJiraTicket,
   selectedSpec,
   setSelectedSpec,
-  architectureStandards,
+  architectureStandards = [],
   onToggleStandard,
   mermaidCode,
   symbolCatalog,
@@ -33,7 +36,12 @@ export default function DynamicLeftPanel({
   auditedSymbols = [],
   onToggleSymbolAudit,
   onProceedNextLevel,
-  onAddXp
+  onAddXp,
+  onUploadArchitecture,
+  isAnalyzingArchitecture = false,
+  hasArchitectureDoc = false,
+  onLinkGithubIssue,
+  isLinkingIssue = false
 }) {
   // Level 1: Spec & Intent Check
   if (level === 1) {
@@ -46,6 +54,8 @@ export default function DynamicLeftPanel({
         onAddXp={onAddXp}
         isLevelComplete={isLevelComplete}
         onProceedNextLevel={onProceedNextLevel}
+        onLinkGithubIssue={onLinkGithubIssue}
+        isLinkingIssue={isLinkingIssue}
       />
     );
   }
@@ -56,23 +66,71 @@ export default function DynamicLeftPanel({
 
     return (
       <div className="space-y-4">
-        {/* Architecture Diagram Launcher Card */}
+        {/* Architecture Spec & Upload Card */}
         <div className="bg-[#FFFDF9] border border-[#E6E0D5] hover:border-[#C35832]/40 rounded-xl p-3.5 shadow-2xs transition-all">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-[#C35832] flex items-center gap-1.5">
-              <span>📐</span> Architecture Diagram
+              <span>📐</span> Architecture & Spec Diff
             </span>
+            {hasArchitectureDoc && (
+              <span className="text-[10px] font-bold text-[#4F6D56] bg-[#F4F8F5] px-1.5 py-0.5 rounded border border-[#4F6D56]/20">
+                ✓ architecture.md
+              </span>
+            )}
           </div>
 
           <p className="text-xs text-[#6B635A] mt-1.5 leading-snug">
-            Component flows showing added, modified, and removed services.
+            {hasArchitectureDoc 
+              ? 'Architecture document loaded. Gemini model evaluates diff against documented boundaries.' 
+              : 'Upload architecture.md to have Gemini verify architectural boundaries and generate net diff.'}
           </p>
 
-          <div className="grid grid-cols-2 gap-2 mt-3">
+          {/* Upload Button */}
+          {onUploadArchitecture && (
+            <div className="mt-2.5">
+              <label className={`w-full py-1.5 px-3 border border-dashed rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${
+                isAnalyzingArchitecture
+                  ? 'bg-[#F9F6F0] border-[#C35832] text-[#C35832]'
+                  : 'bg-white border-[#C35832]/40 hover:bg-[#FBEFEF] text-[#C35832]'
+              }`}>
+                <input
+                  type="file"
+                  accept=".md,.markdown,text/markdown,text/plain"
+                  className="hidden"
+                  disabled={isAnalyzingArchitecture}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file || !onUploadArchitecture) return;
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                      const content = ev.target?.result;
+                      if (typeof content === 'string') {
+                        onUploadArchitecture(content, file.name);
+                      }
+                    };
+                    reader.readAsText(file);
+                  }}
+                />
+                {isAnalyzingArchitecture ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Analyzing with Gemini...</span>
+                  </>
+                ) : (
+                  <>
+                    <FileUp className="w-3.5 h-3.5" />
+                    <span>{hasArchitectureDoc ? 'Update architecture.md' : 'Upload architecture.md'}</span>
+                  </>
+                )}
+              </label>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-2 mt-2.5">
             <button
               type="button"
               onClick={onOpenArchModal}
-              className="py-2 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-lg shadow-2xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              className="py-1.5 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-lg shadow-2xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <span>Diagram</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -80,7 +138,7 @@ export default function DynamicLeftPanel({
             <button
               type="button"
               onClick={onOpenArchTextModal || onOpenArchModal}
-              className="py-2 bg-white border border-[#E6E0D5] hover:bg-[#F9F6F0] text-[#242220] text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              className="py-1.5 bg-white border border-[#E6E0D5] hover:bg-[#F9F6F0] text-[#242220] text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <BookOpen className="w-3.5 h-3.5 text-[#C35832]" />
               <span>Repo Docs</span>
@@ -130,9 +188,24 @@ export default function DynamicLeftPanel({
                   <div className="text-xs flex-1">
                     <div className="flex items-center justify-between gap-1 flex-wrap">
                       <span className="font-bold text-[#242220]">{std.title}</span>
-                      <span className="text-[9px] font-mono bg-[#F1ECE4] text-[#6B635A] px-1.5 py-0.2 rounded font-semibold">
-                        {std.id}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {std.status === 'violation' ? (
+                          <span className="text-[9px] font-bold text-[#DC2626] bg-[#FEE2E2] px-1.5 py-0.2 rounded border border-[#DC2626]/20">
+                            ⚠️ Violation
+                          </span>
+                        ) : std.status === 'warning' ? (
+                          <span className="text-[9px] font-bold text-[#D97706] bg-[#FEF3C7] px-1.5 py-0.2 rounded border border-[#D97706]/20">
+                            ⚡ Warning
+                          </span>
+                        ) : std.status === 'compliant' ? (
+                          <span className="text-[9px] font-bold text-[#2D6A4F] bg-[#EBF7EE] px-1.5 py-0.2 rounded border border-[#2D6A4F]/20">
+                            ✓ Compliant
+                          </span>
+                        ) : null}
+                        <span className="text-[9px] font-mono bg-[#F1ECE4] text-[#6B635A] px-1.5 py-0.2 rounded font-semibold">
+                          {std.id}
+                        </span>
+                      </div>
                     </div>
                     <div className="text-[10px] text-[#C35832] font-semibold mt-0.5">
                       {std.category}

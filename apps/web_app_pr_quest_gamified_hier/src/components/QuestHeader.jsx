@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, RefreshCw, GitPullRequest, Award, CheckCircle, ChevronLeft, ChevronRight, Loader2, Github } from 'lucide-react';
+import { Shield, RefreshCw, GitPullRequest, Award, CheckCircle, ChevronLeft, ChevronRight, Loader2, Github, Sparkles } from 'lucide-react';
 
 export default function QuestHeader({ 
   level, 
@@ -35,7 +35,9 @@ export default function QuestHeader({
   githubPrLoading = false,
   onPrevGithubPr,
   onNextGithubPr,
-  githubStatus = null
+  githubStatus = null,
+  onTriggerAiPopulate,
+  isAiPopulating = false
 }) {
   const levels = [
     { 
@@ -141,6 +143,27 @@ export default function QuestHeader({
 
         {/* Right: Architecture Diagram + Subtle Refresh + Circular User on the Right */}
         <div className="flex items-center justify-end gap-2.5">
+          {onTriggerAiPopulate && (
+            <button
+              onClick={onTriggerAiPopulate}
+              disabled={isAiPopulating}
+              className="px-2.5 py-1.5 bg-[#FFFDF9] border border-[#D08A29]/40 hover:border-[#D08A29] text-[#242220] hover:bg-[#F9F6F0] rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs disabled:opacity-50"
+              title="Autopopulate review metadata across all levels with Gemini AI"
+            >
+              {isAiPopulating ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-[#D08A29]" />
+                  <span>Analyzing with AI...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3.5 h-3.5 text-[#D08A29]" />
+                  <span>AI Populate</span>
+                </>
+              )}
+            </button>
+          )}
+
           <button
             onClick={onOpenArch}
             className="px-3 py-1.5 bg-white border border-[#E6E0D5] hover:border-[#C35832]/40 text-[#242220] hover:bg-[#F9F6F0] rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"

@@ -130,6 +130,12 @@ class DatabaseManager {
         avatar_url TEXT,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
     `);
   }
 
@@ -754,6 +760,43 @@ class DatabaseManager {
     }
     this.sqlite.prepare(`DELETE FROM github_links WHERE user_id = ?`).run(userId);
     return true;
+  }
+
+  getSetting(key) {
+    if (!key) return null;
+    if (this.useMemoryFallback) {
+      return this.fallbackStore.settings?.[key] || null;
+    }
+    try {
+      const stmt = this.sqlite.prepare('SELECT value FROM app_settings WHERE key = ?');
+      const row = stmt.get(key);
+      return row ? row.value : null;
+    } catch (err) {
+      console.error('[DB] getSetting error:', err);
+      return null;
+    }
+  }
+
+  setSetting(key, value) {
+    if (!key) return false;
+    const now = new Date().toISOString();
+    if (this.useMemoryFallback) {
+      if (!this.fallbackStore.settings) this.fallbackStore.settings = {};
+      this.fallbackStore.settings[key] = value;
+      this.persistFallback();
+      return true;
+    }
+    try {
+      this.sqlite.prepare(`
+        INSERT INTO app_settings (key, value, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+      `).run(key, String(value), now);
+      return true;
+    } catch (err) {
+      console.error('[DB] setSetting error:', err);
+      return false;
+    }
   }
 }
 

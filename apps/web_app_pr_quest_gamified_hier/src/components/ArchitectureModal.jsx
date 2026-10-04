@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BookOpen, X, Save, FileText } from 'lucide-react';
+import { BookOpen, X, Save, FileText, FileUp, Loader2 } from 'lucide-react';
 
 const ROLE_LABELS = {
   architecture: 'Architecture',
@@ -14,7 +14,9 @@ export default function ArchitectureModal({
   architectureText, 
   repoDocs = [],
   onSave,
-  onAddXp 
+  onAddXp,
+  onUploadArchitecture,
+  isAnalyzingArchitecture = false
 }) {
   const tabs = repoDocs.length > 0
     ? repoDocs.map((d) => ({
@@ -100,12 +102,47 @@ export default function ArchitectureModal({
               </p>
             </div>
           </div>
-          <button 
-            onClick={onClose}
-            className="text-[#6B635A] hover:text-[#242220] p-1 rounded-lg hover:bg-[#F9F6F0] cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {onUploadArchitecture && (
+              <label className="px-2.5 py-1 text-xs border border-dashed border-[#C35832]/60 hover:bg-[#FBEFEF] text-[#C35832] font-semibold rounded-lg cursor-pointer flex items-center gap-1.5 transition-colors">
+                <input
+                  type="file"
+                  accept=".md,.markdown,text/markdown,text/plain"
+                  className="hidden"
+                  disabled={isAnalyzingArchitecture}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file || !onUploadArchitecture) return;
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                      const content = ev.target?.result;
+                      if (typeof content === 'string') {
+                        onUploadArchitecture(content, file.name);
+                      }
+                    };
+                    reader.readAsText(file);
+                  }}
+                />
+                {isAnalyzingArchitecture ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Analyzing...</span>
+                  </>
+                ) : (
+                  <>
+                    <FileUp className="w-3.5 h-3.5" />
+                    <span>Upload architecture.md</span>
+                  </>
+                )}
+              </label>
+            )}
+            <button 
+              onClick={onClose}
+              className="text-[#6B635A] hover:text-[#242220] p-1 rounded-lg hover:bg-[#F9F6F0] cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Tabs */}

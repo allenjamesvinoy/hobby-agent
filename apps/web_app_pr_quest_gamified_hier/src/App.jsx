@@ -79,6 +79,7 @@ function AppContent() {
   // --- Auth & User State ---
   const [currentUser, setCurrentUser] = useState(() => api.currentUser || PRESET_USERS[0]);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [geminiStatus, setGeminiStatus] = useState({ configured: false, source: 'none' });
 
   // --- Query / PR State ---
   const [currentQueryId, setCurrentQueryId] = useState(() => {
@@ -103,6 +104,14 @@ function AppContent() {
   const [myReposLoading, setMyReposLoading] = useState(false);
   const [repoDocs, setRepoDocs] = useState([]);
   const [githubMeta, setGithubMeta] = useState(null);
+
+  // --- Gemini & AI Automation State ---
+  const [customDiagramModel, setCustomDiagramModel] = useState(null);
+  const [customSymbolCatalog, setCustomSymbolCatalog] = useState(null);
+  const [architectureSummary, setArchitectureSummary] = useState('');
+  const [isAiPopulating, setIsAiPopulating] = useState(false);
+  const [isLinkingIssue, setIsLinkingIssue] = useState(false);
+  const [isAnalyzingArchitecture, setIsAnalyzingArchitecture] = useState(false);
 
   // --- Review Workspace State ---
   const [level, setLevel] = useState(1);
@@ -147,6 +156,12 @@ function AppContent() {
     async function init() {
       await api.checkHealth();
       await refreshGithubStatus();
+      try {
+        const gst = await api.getGeminiStatus();
+        setGeminiStatus(gst);
+      } catch (e) {
+        console.error("Failed to load Gemini status:", e);
+      }
       const queryList = await api.listQueries();
       setQueries(queryList);
       await loadQueryState(currentQueryId, currentUser);
@@ -186,7 +201,11 @@ function AppContent() {
         architectureText: queryArch,
         repoDocs: queryDocs,
         meta: queryMeta,
-        userProgress
+        userProgress,
+        testSuites: queryTestSuites,
+        architectureDiagramModel: queryArchDiagram,
+        symbolCatalog: querySymbols,
+        architectureSummary: queryArchSummary
       } = res.data;
       setCurrentQueryTitle(title || `PR #${queryId}`);
 
@@ -220,6 +239,22 @@ function AppContent() {
       if (queryArch) setArchitectureText(queryArch);
       if (queryDocs) setRepoDocs(queryDocs);
       if (queryMeta) setGithubMeta(queryMeta);
+
+      const resolvedSuites = (queryTestSuites && Array.isArray(queryTestSuites) && queryTestSuites.length > 0)
+        ? queryTestSuites
+        : (queryMeta?.testSuites && Array.isArray(queryMeta.testSuites) && queryMeta.testSuites.length > 0)
+          ? queryMeta.testSuites
+          : isGh ? [] : initialTestSuites;
+      setTestSuites(resolvedSuites);
+
+      const resolvedDiagram = queryArchDiagram || queryMeta?.architectureDiagramModel || null;
+      setCustomDiagramModel(resolvedDiagram);
+
+      const resolvedSymbols = querySymbols || queryMeta?.symbolCatalog || null;
+      setCustomSymbolCatalog(resolvedSymbols);
+
+      const resolvedSummary = queryArchSummary || queryMeta?.architectureSummary || '';
+      setArchitectureSummary(resolvedSummary);
 
       if (userProgress) {
         setLevel(userProgress.level || 1);
@@ -394,9 +429,10 @@ function AppContent() {
 
   const isGithubWorkspace = isGithubWorkspaceFiles(files) || String(currentQueryId).startsWith('GH-');
   const derivedSymbols = isGithubWorkspace ? buildSymbolCatalogFromFiles(files) : null;
-  const symbolCatalog = derivedSymbols?.catalog && Object.keys(derivedSymbols.catalog).length > 0
-    ? derivedSymbols.catalog
-    : initialSymbolCatalog;
+  const symbolCatalog = customSymbolCatalog
+    || (derivedSymbols?.catalog && Object.keys(derivedSymbols.catalog).length > 0
+      ? derivedSymbols.catalog
+      : initialSymbolCatalog);
   const symbolKeys = Object.keys(symbolCatalog || {});
   const completedSymbolsCount = (auditedSymbols || []).filter(k => symbolKeys.includes(k)).length;
   const totalSymbolsCount = symbolKeys.length;
@@ -410,9 +446,10 @@ function AppContent() {
     }
   }, [currentQueryId, symbolKeys.join(',')]);
 
-  const architectureDiagramModel = isGithubWorkspace
-    ? buildArchitectureDiagram(files, architectureText, repoDocs)
-    : null;
+  const architectureDiagramModel = customDiagramModel
+    || (isGithubWorkspace
+      ? buildArchitectureDiagram(files, architectureText, repoDocs)
+      : null);
 
   // --- GitHub PR Handlers ---
   const handleLoadRepo = async (repoInput) => {
@@ -476,6 +513,11 @@ function AppContent() {
         ? workspace.architectureText
         : defaultArchitecture;
       const nextRepoDocs = Array.isArray(workspace.repoDocs) ? workspace.repoDocs : [];
+      const nextTestSuites = Array.isArray(workspace.testSuites) && workspace.testSuites.length > 0
+        ? workspace.testSuites
+        : initialTestSuites;
+      const nextDiagramModel = workspace.architectureDiagramModel || null;
+      const nextSymbolCatalog = workspace.symbolCatalog || null;
 
       const newState = {
         queryId,
@@ -487,7 +529,9 @@ function AppContent() {
         architectureText: nextArchitectureText,
         repoDocs: nextRepoDocs,
         auditedSymbols: [],
-        testSuites: initialTestSuites,
+        testSuites: nextTestSuites,
+        architectureDiagramModel: nextDiagramModel,
+        symbolCatalog: nextSymbolCatalog,
         verdicts: [],
         githubMeta: workspace.meta || null
       };
@@ -508,7 +552,9 @@ function AppContent() {
       setArchitectureText(nextArchitectureText);
       setRepoDocs(nextRepoDocs);
       setAuditedSymbols([]);
-      setTestSuites(initialTestSuites);
+      setTestSuites(nextTestSuites);
+      setCustomDiagramModel(nextDiagramModel);
+      setCustomSymbolCatalog(nextSymbolCatalog);
       setVerdicts([]);
       setGithubMeta(workspace.meta || null);
       setLevel(1);
@@ -518,8 +564,12 @@ function AppContent() {
       setSelectedSpec('ALL');
       setSyncStatus('saved');
 
-      const derived = buildSymbolCatalogFromFiles(workspace.files || []);
-      setActiveSymbolKey(derived.defaultKey || null);
+      if (nextSymbolCatalog && Object.keys(nextSymbolCatalog).length > 0) {
+        setActiveSymbolKey(Object.keys(nextSymbolCatalog)[0]);
+      } else {
+        const derived = buildSymbolCatalogFromFiles(workspace.files || []);
+        setActiveSymbolKey(derived.defaultKey || null);
+      }
     }
 
     const updatedQueries = await api.listQueries();
@@ -575,6 +625,88 @@ function AppContent() {
   const handleSelectMyRepo = async (fullName) => {
     if (!fullName) return false;
     return await handleLoadRepo(fullName);
+  };
+
+  // --- Gemini & AI Automation Handlers ---
+  const handleSaveGeminiKey = async (key) => {
+    const res = await api.saveGeminiKey(key);
+    if (res.success) {
+      const gst = await api.getGeminiStatus();
+      setGeminiStatus(gst);
+      setQuestLogs(prev => [
+        { id: Date.now(), text: `🔑 Gemini API Key configured (${gst.source})`, timestamp: new Date().toLocaleTimeString() },
+        ...prev
+      ].slice(0, 5));
+    }
+    return res;
+  };
+
+  const handleLinkGithubIssue = async (issueRef) => {
+    setIsLinkingIssue(true);
+    const res = await api.linkGithubIssue(currentQueryId, issueRef);
+    setIsLinkingIssue(false);
+    if (res.success && res.jiraTicket) {
+      setJiraTicket(res.jiraTicket);
+      if (res.files && Array.isArray(res.files) && res.files.length > 0) {
+        setFiles(res.files);
+      }
+      setQuestLogs(prev => [
+        { id: Date.now(), text: `📋 Linked Issue #${res.jiraTicket.key}: Extracted ${res.jiraTicket.criteria?.length || 0} Acceptance Criteria`, timestamp: new Date().toLocaleTimeString() },
+        ...prev
+      ].slice(0, 5));
+      return { success: true, count: res.jiraTicket.criteria?.length || 0 };
+    }
+    return { success: false, error: res.error || 'Failed to link issue' };
+  };
+
+  const handleUploadArchitecture = async (content, fileName = 'architecture.md') => {
+    setIsAnalyzingArchitecture(true);
+    setArchitectureText(content);
+    const res = await api.uploadArchitectureDoc(currentQueryId, fileName, content);
+    setIsAnalyzingArchitecture(false);
+    if (res.success) {
+      if (res.standards && Array.isArray(res.standards)) {
+        setStandards(res.standards);
+      }
+      if (res.architectureDiagramModel) {
+        setCustomDiagramModel(res.architectureDiagramModel);
+      }
+      if (res.architectureText) {
+        setArchitectureText(res.architectureText);
+      }
+      if (res.summary) {
+        setArchitectureSummary(res.summary);
+      }
+      setRepoDocs(prev => {
+        const withoutArch = prev.filter(d => d.role !== 'architecture' && d.path !== fileName);
+        return [{ name: fileName, path: fileName, role: 'architecture', content, rawSize: content.length }, ...withoutArch];
+      });
+      setQuestLogs(prev => [
+        { id: Date.now(), text: `🏛️ Analyzed ${fileName}: Generated ${res.standards?.length || 0} architectural standards`, timestamp: new Date().toLocaleTimeString() },
+        ...prev
+      ].slice(0, 5));
+      return { success: true, count: res.standards?.length || 0 };
+    }
+    return { success: false, error: res.error || 'Failed to analyze architecture' };
+  };
+
+  const handleTriggerAiPopulate = async () => {
+    setIsAiPopulating(true);
+    const res = await api.triggerAiPopulate(currentQueryId);
+    setIsAiPopulating(false);
+    if (res.success && res.data) {
+      if (res.data.standards) setStandards(res.data.standards);
+      if (res.data.architectureDiagramModel) setCustomDiagramModel(res.data.architectureDiagramModel);
+      if (res.data.testSuites) setTestSuites(res.data.testSuites);
+      if (res.data.symbolCatalog) setCustomSymbolCatalog(res.data.symbolCatalog);
+      if (res.data.architectureSummary) setArchitectureSummary(res.data.architectureSummary);
+      setQuestLogs(prev => [
+        { id: Date.now(), text: `✨ Gemini AI Populated: Standards, Blast Radius & Test Suites synced!`, timestamp: new Date().toLocaleTimeString() },
+        ...prev
+      ].slice(0, 5));
+      return { success: true };
+    }
+    return { success: false, error: res.error || 'Failed to AI populate review metadata' };
   };
 
   const handleSaveArchitecture = (archText, nextDocs) => {
@@ -840,6 +972,8 @@ function AppContent() {
         onPrevGithubPr={handlePrevGithubPr}
         onNextGithubPr={handleNextGithubPr}
         githubStatus={githubStatus}
+        onTriggerAiPopulate={handleTriggerAiPopulate}
+        isAiPopulating={isAiPopulating}
       />
 
       {/* Main Workspace: Dynamically adapts per level */}
@@ -910,6 +1044,11 @@ function AppContent() {
                 onOpenArchTextModal={() => setIsArchOpen(true)}
                 auditedSymbols={auditedSymbols}
                 onToggleSymbolAudit={handleToggleSymbolAudit}
+                onUploadArchitecture={handleUploadArchitecture}
+                isAnalyzingArchitecture={isAnalyzingArchitecture}
+                hasArchitectureDoc={Boolean(architectureText || repoDocs.some(d => d.role === 'architecture'))}
+                onLinkGithubIssue={handleLinkGithubIssue}
+                isLinkingIssue={isLinkingIssue}
                 isLevelComplete={
                   level === 1 ? isLevel1Complete :
                   level === 2 ? isLevel2Complete :
@@ -959,6 +1098,8 @@ function AppContent() {
         repoDocs={repoDocs}
         onSave={handleSaveArchitecture}
         onAddXp={handleAddXp}
+        onUploadArchitecture={handleUploadArchitecture}
+        isAnalyzingArchitecture={isAnalyzingArchitecture}
       />
 
       {/* Distributed Team Verdict & Handoff Modal */}
@@ -1315,6 +1456,8 @@ function AppContent() {
         onLinkGithubToken={handleLinkGithubToken}
         onUnlinkGithub={handleUnlinkGithub}
         onLinkGithubOAuth={handleLinkGithubOAuth}
+        geminiStatus={geminiStatus}
+        onSaveGeminiKey={handleSaveGeminiKey}
       />
 
       {/* Query Selector Modal */}
