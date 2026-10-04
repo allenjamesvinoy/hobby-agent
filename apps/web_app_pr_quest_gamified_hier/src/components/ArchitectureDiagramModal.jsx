@@ -4,16 +4,126 @@ import {
   ExternalLink
 } from 'lucide-react';
 
+function edgeStroke(kind) {
+  switch (kind) {
+    case 'created':
+      return { stroke: '#2D6A4F', marker: 'url(#arrow-green)' };
+    case 'modified':
+      return { stroke: '#D97706', marker: 'url(#arrow-amber)' };
+    case 'removed':
+      return { stroke: '#DC2626', marker: 'url(#arrow-red)' };
+    default:
+      return { stroke: '#6B7280', marker: 'url(#arrow-gray)' };
+  }
+}
+
+function DynamicSketch({ nodes = [], edges = [], selectedNode, setSelectedNode }) {
+  const byId = Object.fromEntries(nodes.map((n) => [n.id, n]));
+  const maxBottom = nodes.reduce((m, n) => Math.max(m, (n.y || 0) + (n.h || 78)), 0);
+  const height = Math.max(360, maxBottom + 48);
+
+  return (
+    <svg viewBox={`0 0 820 ${height}`} className="w-full h-auto drop-shadow-xs">
+      <defs>
+        <marker id="arrow-green" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1 L 10 5 L 0 9 z" fill="#2D6A4F" />
+        </marker>
+        <marker id="arrow-amber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1 L 10 5 L 0 9 z" fill="#D97706" />
+        </marker>
+        <marker id="arrow-gray" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1 L 10 5 L 0 9 z" fill="#6B7280" />
+        </marker>
+        <marker id="arrow-red" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1 L 10 5 L 0 9 z" fill="#DC2626" />
+        </marker>
+      </defs>
+
+      {edges.map((e, idx) => {
+        const a = byId[e.from];
+        const b = byId[e.to];
+        if (!a || !b) return null;
+        const x1 = a.x + a.w / 2;
+        const y1 = a.y + a.h / 2;
+        const x2 = b.x + b.w / 2;
+        const y2 = b.y + b.h / 2;
+        const style = edgeStroke(e.kind);
+        const mx = (x1 + x2) / 2;
+        const my = (y1 + y2) / 2;
+        return (
+          <g key={`e-${idx}`}>
+            <path
+              d={`M ${x1} ${y1} L ${x2} ${y2}`}
+              stroke={style.stroke}
+              strokeWidth="2"
+              fill="none"
+              markerEnd={style.marker}
+              strokeDasharray={e.kind === 'removed' ? '5,5' : undefined}
+            />
+            <rect x={mx - 28} y={my - 9} width="56" height="16" rx="4" fill="#FFFFFF" stroke={style.stroke} strokeWidth="1" />
+            <text x={mx} y={my + 3} textAnchor="middle" fontSize="9" fontWeight="bold" fill={style.stroke}>
+              {e.label}
+            </text>
+          </g>
+        );
+      })}
+
+      {nodes.map((n) => {
+        const selected = selectedNode === n.id;
+        return (
+          <g key={n.id} onClick={() => setSelectedNode(n.id)} className="cursor-pointer">
+            <rect x={n.x + 3} y={n.y + 3} width={n.w} height={n.h} rx="12" fill="#E6E0D5" opacity="0.55" />
+            <rect
+              x={n.x}
+              y={n.y}
+              width={n.w}
+              height={n.h}
+              rx="12"
+              fill={n.fill}
+              stroke={selected ? '#C35832' : n.stroke}
+              strokeWidth={selected ? 3.5 : 2.5}
+              strokeDasharray={n.kind === 'removed' ? '5,5' : undefined}
+            />
+            <rect x={n.x + n.w - 88} y={n.y + 8} width="78" height="16" rx="5" fill={n.stroke} />
+            <text x={n.x + n.w - 49} y={n.y + 19} textAnchor="middle" fontSize="9" fontWeight="bold" fill="#FFFFFF">
+              {n.badge}
+            </text>
+            <text x={n.x + 14} y={n.y + 36} fontSize="13" fontWeight="800" fill="#242220">
+              {n.name.length > 22 ? `${n.name.slice(0, 20)}…` : n.name}
+            </text>
+            <text x={n.x + 14} y={n.y + 54} fontSize="10" fontWeight="600" fill="#6B635A">
+              {n.tier}
+            </text>
+            <text x={n.x + 14} y={n.y + 68} fontSize="9" fontStyle="italic" fill="#6B635A">
+              {(n.summary || '').slice(0, 34)}
+            </text>
+          </g>
+        );
+      })}
+
+      {nodes.length === 0 && (
+        <text x="410" y="180" textAnchor="middle" fontSize="13" fill="#6B635A">
+          No architecture nodes derived yet.
+        </text>
+      )}
+    </svg>
+  );
+}
+
 export default function ArchitectureDiagramModal({
   isOpen,
   onClose,
   onSelectNodeFile,
   baselineMermaid,
   proposedMermaid,
-  diffMermaid
+  diffMermaid,
+  diagramModel = null,
+  currentQueryTitle = '',
+  jiraTicket = null
 }) {
+  const isDynamic = Boolean(diagramModel && Array.isArray(diagramModel.nodes) && diagramModel.nodes.length > 0);
   const [activeTab, setActiveTab] = useState('diff'); // 'diff' | 'proposed' | 'baseline'
-  const [selectedNode, setSelectedNode] = useState('SM');
+  const [selectedNode, setSelectedNode] = useState(isDynamic ? diagramModel?.nodes[0]?.id : 'SM');
 
   if (!isOpen) return null;
 
@@ -69,7 +179,15 @@ export default function ArchitectureDiagramModal({
     }
   };
 
-  const activeNodeInfo = nodeDetails[selectedNode] || nodeDetails.SM;
+  const activeNodeInfo = isDynamic
+    ? (diagramModel?.nodes?.find(n => n.id === selectedNode) || diagramModel?.nodes?.[0] || {
+        name: "Architecture Node",
+        badge: "MODULE",
+        badgeColor: "bg-[#F3F4F6] text-[#4B5563] border-[#4B5563]/30",
+        summary: "Repository component",
+        path: null
+      })
+    : (nodeDetails[selectedNode] || nodeDetails.SM);
 
   return (
     <div 
@@ -174,7 +292,15 @@ export default function ArchitectureDiagramModal({
 
             {/* Visual Diagram (SVG Layout) */}
             <div className="relative z-10">
-              <svg viewBox="0 0 820 420" className="w-full h-auto drop-shadow-xs">
+              {isDynamic ? (
+                <DynamicSketch
+                  nodes={diagramModel.nodes}
+                  edges={diagramModel.edges}
+                  selectedNode={selectedNode || diagramModel.nodes[0]?.id}
+                  setSelectedNode={setSelectedNode}
+                />
+              ) : (
+                <svg viewBox="0 0 820 420" className="w-full h-auto drop-shadow-xs">
                 <defs>
                   <marker id="arrow-green" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
                     <path d="M 0 1 L 10 5 L 0 9 z" fill="#2D6A4F" />
@@ -372,6 +498,7 @@ export default function ArchitectureDiagramModal({
                   </g>
                 )}
               </svg>
+            )}
             </div>
           </div>
 
@@ -410,7 +537,7 @@ export default function ArchitectureDiagramModal({
 
         {/* Minimal Footer */}
         <div className="px-6 py-2.5 border-t border-[#E6E0D5] bg-white flex items-center justify-between text-xs text-[#6B635A]">
-          <span>PR-101: Token Rotation & LocalStorage Fallback</span>
+          <span>{currentQueryTitle || jiraTicket?.title || 'PR-101: Token Rotation & LocalStorage Fallback'}</span>
           <button
             onClick={onClose}
             className="px-4 py-1.5 bg-[#242220] hover:bg-[#3D3A36] text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"

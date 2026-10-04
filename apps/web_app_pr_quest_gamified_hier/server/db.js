@@ -34,7 +34,8 @@ class DatabaseManager {
     this.fallbackStore = {
       users: {},
       review_queries: {},
-      user_progress: {}
+      user_progress: {},
+      github_links: {}
     };
     this.init();
   }
@@ -57,6 +58,7 @@ class DatabaseManager {
     if (this.sqlite) {
       try {
         this.sqlite.exec(`
+          DROP TABLE IF EXISTS github_links;
           DROP TABLE IF EXISTS user_progress;
           DROP TABLE IF EXISTS review_queries;
           DROP TABLE IF EXISTS users;
@@ -95,9 +97,15 @@ class DatabaseManager {
         title TEXT NOT NULL,
         files_json TEXT NOT NULL,
         verdicts_json TEXT NOT NULL DEFAULT '[]',
+        meta_json TEXT DEFAULT '{}',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
+    `);
+    try {
+      this.sqlite.exec(`ALTER TABLE review_queries ADD COLUMN meta_json TEXT DEFAULT '{}';`);
+    } catch (_) {}
+    this.sqlite.exec(`
 
       CREATE TABLE IF NOT EXISTS user_progress (
         id TEXT PRIMARY KEY,
@@ -112,6 +120,15 @@ class DatabaseManager {
         symbols_json TEXT NOT NULL DEFAULT '[]',
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(user_id, query_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS github_links (
+        user_id TEXT PRIMARY KEY,
+        github_user_id TEXT NOT NULL,
+        login TEXT NOT NULL,
+        access_token TEXT NOT NULL,
+        avatar_url TEXT,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
     `);
   }
@@ -371,19 +388,23 @@ class DatabaseManager {
       if (!q) return null;
       let files = [];
       let verdicts = [];
+      let meta = {};
       try { files = JSON.parse(q.files_json); } catch (_) {}
       try { verdicts = JSON.parse(q.verdicts_json); } catch (_) {}
+      try { meta = JSON.parse(q.meta_json || '{}'); } catch (_) {}
       return {
         queryId: q.query_id,
         title: q.title,
         files,
         verdicts,
+        meta,
+        ...meta,
         updatedAt: q.updated_at
       };
     }
 
     const row = this.sqlite.prepare(`
-      SELECT query_id, title, files_json, verdicts_json, updated_at
+      SELECT query_id, title, files_json, verdicts_json, meta_json, updated_at
       FROM review_queries
       WHERE query_id = ?
     `).get(queryId);
@@ -391,44 +412,59 @@ class DatabaseManager {
     if (!row) return null;
     let files = [];
     let verdicts = [];
+    let meta = {};
     try { files = JSON.parse(row.files_json); } catch (_) {}
     try { verdicts = JSON.parse(row.verdicts_json); } catch (_) {}
+    try { meta = JSON.parse(row.meta_json || '{}'); } catch (_) {}
     return {
       queryId: row.query_id,
       title: row.title,
       files,
       verdicts,
+      meta,
+      ...meta,
       updatedAt: row.updated_at
     };
   }
 
-  saveQuery(queryId, title, files, verdicts) {
+  saveQuery(queryId, title, files, verdicts, meta = null) {
     const filesJson = JSON.stringify(files);
     const verdictsJson = JSON.stringify(verdicts || []);
+    const metaJson = JSON.stringify(meta || {});
     const now = new Date().toISOString();
 
     if (this.useMemoryFallback) {
+      const prev = this.fallbackStore.review_queries[queryId] || {};
       this.fallbackStore.review_queries[queryId] = {
         query_id: queryId,
-        title: title || `Query ${queryId}`,
+        title: title || prev.title || `Query ${queryId}`,
         files_json: filesJson,
         verdicts_json: verdictsJson,
+        meta_json: meta ? metaJson : (prev.meta_json || '{}'),
         updated_at: now
       };
       this.persistFallback();
       return true;
     }
 
+    let existingMetaJson = '{}';
+    try {
+      const existing = this.sqlite.prepare('SELECT meta_json FROM review_queries WHERE query_id = ?').get(queryId);
+      if (existing?.meta_json) existingMetaJson = existing.meta_json;
+    } catch (_) {}
+    const finalMetaJson = meta ? metaJson : existingMetaJson;
+
     const stmt = this.sqlite.prepare(`
-      INSERT INTO review_queries (query_id, title, files_json, verdicts_json, updated_at)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO review_queries (query_id, title, files_json, verdicts_json, meta_json, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(query_id) DO UPDATE SET
         title = excluded.title,
         files_json = excluded.files_json,
         verdicts_json = excluded.verdicts_json,
+        meta_json = excluded.meta_json,
         updated_at = excluded.updated_at
     `);
-    stmt.run(queryId, title || `Query ${queryId}`, filesJson, verdictsJson, now);
+    stmt.run(queryId, title || `Query ${queryId}`, filesJson, verdictsJson, finalMetaJson, now);
     return true;
   }
 
@@ -479,14 +515,17 @@ class DatabaseManager {
   }
 
   createDefaultUserProgress(userId, queryId) {
-    // All ACs start unchecked (completed: false), Level 1, 0 XP!
-    const defaultCriteria = initialJiraTicket.criteria.map(ac => ({
+    const query = this.getQuery(userId, queryId);
+    const criteriaToUse = query?.jiraTicket?.criteria || initialJiraTicket.criteria;
+    const standardsToUse = query?.standards || architectureStandards;
+
+    const defaultCriteria = criteriaToUse.map(ac => ({
       id: ac.id,
       text: ac.text,
       completed: false
     }));
 
-    const defaultStandards = architectureStandards.map(s => ({
+    const defaultStandards = standardsToUse.map(s => ({
       ...s,
       completed: false
     }));
@@ -655,6 +694,66 @@ class DatabaseManager {
 
     this.saveQuery(queryId, query.title, query.files, query.verdicts);
     return query.verdicts;
+  }
+
+  // --- GitHub OAuth link (token never exposed via API layer) ---
+  getGithubLink(userId) {
+    if (!userId) return null;
+    if (this.useMemoryFallback) {
+      return this.fallbackStore.github_links[userId] || null;
+    }
+    const row = this.sqlite.prepare(`
+      SELECT user_id, github_user_id, login, access_token, avatar_url, updated_at
+      FROM github_links
+      WHERE user_id = ?
+    `).get(userId);
+    if (!row) return null;
+    return {
+      userId: row.user_id,
+      githubUserId: row.github_user_id,
+      login: row.login,
+      accessToken: row.access_token,
+      avatarUrl: row.avatar_url,
+      updatedAt: row.updated_at
+    };
+  }
+
+  upsertGithubLink(userId, { githubUserId, login, accessToken, avatarUrl }) {
+    const now = new Date().toISOString();
+    if (this.useMemoryFallback) {
+      this.fallbackStore.github_links[userId] = {
+        userId,
+        githubUserId: String(githubUserId),
+        login,
+        accessToken,
+        avatarUrl: avatarUrl || null,
+        updatedAt: now
+      };
+      this.persistFallback();
+      return this.getGithubLink(userId);
+    }
+    this.sqlite.prepare(`
+      INSERT INTO github_links (user_id, github_user_id, login, access_token, avatar_url, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET
+        github_user_id = excluded.github_user_id,
+        login = excluded.login,
+        access_token = excluded.access_token,
+        avatar_url = excluded.avatar_url,
+        updated_at = excluded.updated_at
+    `).run(userId, String(githubUserId), login, accessToken, avatarUrl || null, now);
+    return this.getGithubLink(userId);
+  }
+
+  deleteGithubLink(userId) {
+    if (!userId) return false;
+    if (this.useMemoryFallback) {
+      delete this.fallbackStore.github_links[userId];
+      this.persistFallback();
+      return true;
+    }
+    this.sqlite.prepare(`DELETE FROM github_links WHERE user_id = ?`).run(userId);
+    return true;
   }
 }
 

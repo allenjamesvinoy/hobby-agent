@@ -97,6 +97,154 @@ class ApiClient {
     this.setCurrentUser(PRESET_USERS[0]);
   }
 
+  authHeaders(extra = {}) {
+    const userId = this.currentUser?.id || 'reviewer_1';
+    const headers = {
+      'x-user-id': userId,
+      ...extra
+    };
+    if (this.token) {
+      headers.Authorization = `Bearer ${this.token}`;
+    }
+    return headers;
+  }
+
+  /** Start GitHub OAuth in the browser (full-page redirect). */
+  startGithubOAuth() {
+    const userId = this.currentUser?.id || 'reviewer_1';
+    window.location.href = `${API_BASE}/github/oauth/start?userId=${encodeURIComponent(userId)}`;
+  }
+
+  async getGithubStatus() {
+    try {
+      const res = await fetch(`${API_BASE}/github/status`, {
+        headers: this.authHeaders(),
+        signal: AbortSignal.timeout(4000)
+      });
+      if (!res.ok) return { linked: false, login: null, avatarUrl: null, configured: false };
+      return await res.json();
+    } catch (_) {
+      return { linked: false, login: null, avatarUrl: null, configured: false };
+    }
+  }
+
+  async unlinkGithub() {
+    try {
+      const res = await fetch(`${API_BASE}/github/unlink`, {
+        method: 'POST',
+        headers: this.authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ userId: this.currentUser?.id })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        return { success: false, error: err.error || 'Failed to unlink GitHub' };
+      }
+      return { success: true, linked: false };
+    } catch (_) {
+      return { success: false, error: 'Server unreachable' };
+    }
+  }
+
+  /** Link GitHub by pasting a personal access token (stored server-side only). */
+  async linkGithubWithToken(token) {
+    try {
+      const res = await fetch(`${API_BASE}/github/link-token`, {
+        method: 'POST',
+        headers: this.authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          userId: this.currentUser?.id,
+          token: String(token || '').trim()
+        }),
+        signal: AbortSignal.timeout(10000)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Failed to link GitHub token' };
+      }
+      return {
+        success: true,
+        linked: true,
+        login: data.login,
+        avatarUrl: data.avatarUrl || null
+      };
+    } catch (_) {
+      return { success: false, error: 'Server unreachable' };
+    }
+  }
+
+  async listGithubRepos() {
+    try {
+      const res = await fetch(`${API_BASE}/github/repos`, {
+        headers: this.authHeaders(),
+        signal: AbortSignal.timeout(15000)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Failed to list repositories', repos: [] };
+      }
+      return { success: true, repos: data.repos || [], count: data.count || 0 };
+    } catch (_) {
+      return { success: false, error: 'Server unreachable', repos: [] };
+    }
+  }
+
+  /**
+   * Fetch open PRs for a repo URL (or owner/repo). Uses linked GitHub token when available.
+   */
+  async fetchOpenPullRequests(repoUrl) {
+    try {
+      const res = await fetch(`${API_BASE}/github/open-prs`, {
+        method: 'POST',
+        headers: this.authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ repoUrl }),
+        signal: AbortSignal.timeout(15000)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const hint = (res.status >= 500 && !data.error)
+          ? 'API server not running. Start it with: npm run server'
+          : (data.error || `Failed to load PRs (${res.status})`);
+        return { success: false, error: hint };
+      }
+      return {
+        success: true,
+        owner: data.owner,
+        repo: data.repo,
+        repoUrl: data.repoUrl,
+        count: data.count,
+        pullRequests: data.pullRequests || [],
+        authenticated: Boolean(data.authenticated)
+      };
+    } catch (_) {
+      return { success: false, error: 'Server unreachable. Start the API server with: npm run server' };
+    }
+  }
+
+  /**
+   * Load a GitHub PR (files + diffs) into a review workspace payload.
+   */
+  async fetchGitHubPullRequest(owner, repo, number) {
+    try {
+      const res = await fetch(
+        `${API_BASE}/github/pr/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${encodeURIComponent(number)}`,
+        {
+          headers: this.authHeaders(),
+          signal: AbortSignal.timeout(20000)
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const hint = (res.status >= 500 && !data.error)
+          ? 'API server not running. Start it with: npm run server'
+          : (data.error || `Failed to load PR #${number}`);
+        return { success: false, error: hint };
+      }
+      return { success: true, ...data };
+    } catch (_) {
+      return { success: false, error: 'Server unreachable. Start the API server with: npm run server' };
+    }
+  }
+
   async listQueries() {
     try {
       const res = await fetch(`${API_BASE}/queries`, { signal: AbortSignal.timeout(2500) });
@@ -180,20 +328,32 @@ class ApiClient {
   }
 
   async saveQueryState(queryId, title, stateObj, userProgress) {
-    return this.saveUserProgress(queryId, userProgress);
+    const userId = this.currentUser?.id || 'reviewer_1';
+    const cachePayload = { queryId, title, state: stateObj, userProgress, updatedAt: new Date().toISOString() };
+    localStorage.setItem(`pr_quest_query_${queryId}`, JSON.stringify(cachePayload));
+
+    try {
+      const res = await fetch(`${API_BASE}/state`, {
+        method: 'POST',
+        headers: this.authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ queryId, title, state: stateObj, userProgress, userId })
+      });
+      if (res.ok) {
+        return { success: true, isOnline: true };
+      }
+    } catch (_) {}
+
+    return { success: true, isOnline: false };
   }
 
   async updateFileReviewStatus(queryId, fileId, status) {
-    const userId = this.currentUser?.id || 'alex';
+    const userId = this.currentUser?.id || 'reviewer_1';
     const userName = this.currentUser?.name || 'Reviewer';
 
     try {
       const res = await fetch(`${API_BASE}/file-status`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': userId
-        },
+        headers: this.authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ queryId, fileId, status, userId, userName })
       });
       if (res.ok) {
@@ -206,7 +366,7 @@ class ApiClient {
   }
 
   async addComment(queryId, fileId, commentPayload) {
-    const userId = this.currentUser?.id || 'alex';
+    const userId = this.currentUser?.id || 'reviewer_1';
     const enrichedComment = {
       authorId: userId,
       authorName: this.currentUser?.name || 'Reviewer',
@@ -217,15 +377,17 @@ class ApiClient {
     try {
       const res = await fetch(`${API_BASE}/comments`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': userId
-        },
+        headers: this.authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ queryId, fileId, comment: enrichedComment })
       });
       if (res.ok) {
         const data = await res.json();
-        return { success: true, comment: data.comment, isOnline: true };
+        return {
+          success: true,
+          comment: data.comment,
+          githubSync: data.githubSync || null,
+          isOnline: true
+        };
       }
     } catch (_) {}
 
@@ -234,11 +396,11 @@ class ApiClient {
       ...enrichedComment,
       timestamp: 'Just now'
     };
-    return { success: true, comment: localComment, isOnline: false };
+    return { success: true, comment: localComment, githubSync: null, isOnline: false };
   }
 
   async submitVerdict(queryId, verdictPayload) {
-    const userId = this.currentUser?.id || 'alex';
+    const userId = this.currentUser?.id || 'reviewer_1';
     const payload = {
       userId,
       userName: this.currentUser?.name || 'Reviewer',
@@ -249,19 +411,21 @@ class ApiClient {
     try {
       const res = await fetch(`${API_BASE}/verdict`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': userId
-        },
+        headers: this.authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ queryId, verdict: payload })
       });
       if (res.ok) {
         const data = await res.json();
-        return { success: true, verdicts: data.verdicts, isOnline: true };
+        return {
+          success: true,
+          verdicts: data.verdicts,
+          githubSync: data.githubSync || null,
+          isOnline: true
+        };
       }
     } catch (_) {}
 
-    return { success: true, verdict: payload, isOnline: false };
+    return { success: true, verdict: payload, githubSync: null, isOnline: false };
   }
 
   async removeFlag(queryId, fileId, userId) {

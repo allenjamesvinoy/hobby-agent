@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, RefreshCw, GitPullRequest, Award, CheckCircle } from 'lucide-react';
+import { Shield, RefreshCw, GitPullRequest, Award, CheckCircle, ChevronLeft, ChevronRight, Loader2, Github } from 'lucide-react';
 
 export default function QuestHeader({ 
   level, 
@@ -30,7 +30,12 @@ export default function QuestHeader({
   isLevel2Complete = false,
   isLevel3Complete = false,
   isLevel4Complete = false,
-  isVerdictSubmitted = false
+  isVerdictSubmitted = false,
+  githubPullRequests = [],
+  githubPrLoading = false,
+  onPrevGithubPr,
+  onNextGithubPr,
+  githubStatus = null
 }) {
   const levels = [
     { 
@@ -77,23 +82,61 @@ export default function QuestHeader({
 
           <div className="h-6 w-px bg-[#E6E0D5] hidden sm:block" />
 
-          {/* Active Query Selector Pill */}
-          <button
-            onClick={onOpenQuerySelector}
-            className="flex items-center gap-2 bg-[#F9F6F0] hover:bg-[#F1ECE4] border border-[#E6E0D5] hover:border-[#4F6D56]/50 px-3 py-1.5 rounded-lg text-xs transition-all cursor-pointer group flex-shrink-0"
-            title="Switch Review Target / Pull Request Query"
-          >
-            <GitPullRequest className="w-3.5 h-3.5 text-[#4F6D56]" />
-            <div className="text-left">
-              <span className="font-bold text-[#242220] mr-1.5 font-mono">{currentQueryId}:</span>
-              <span className="text-[#6B635A] group-hover:text-[#242220] font-medium truncate max-w-[180px] sm:max-w-[260px] inline-block align-bottom">
-                {currentQueryTitle}
+          {/* Active Query Selector Pill + optional GitHub PR toggle */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {githubPullRequests.length > 1 && (
+              <div className="flex items-center gap-0.5 bg-[#F9F6F0] p-0.5 rounded-lg border border-[#E6E0D5]">
+                <button
+                  type="button"
+                  onClick={onPrevGithubPr}
+                  disabled={githubPrLoading}
+                  className="p-1 text-[#6B635A] hover:text-[#242220] rounded hover:bg-white transition-colors cursor-pointer disabled:opacity-40"
+                  title="Previous open PR in repo"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={onNextGithubPr}
+                  disabled={githubPrLoading}
+                  className="p-1 text-[#6B635A] hover:text-[#242220] rounded hover:bg-white transition-colors cursor-pointer disabled:opacity-40"
+                  title="Next open PR in repo"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            <button
+              onClick={onOpenQuerySelector}
+              className="flex items-center gap-2 bg-[#F9F6F0] hover:bg-[#F1ECE4] border border-[#E6E0D5] hover:border-[#4F6D56]/50 px-3 py-1.5 rounded-lg text-xs transition-all cursor-pointer group flex-shrink-0"
+              title="Switch Review Target / Pull Request Query"
+            >
+              {githubPrLoading ? (
+                <Loader2 className="w-3.5 h-3.5 text-[#C35832] animate-spin" />
+              ) : String(currentQueryId).startsWith('GH-') ? (
+                <Github className="w-3.5 h-3.5 text-[#242220]" />
+              ) : (
+                <GitPullRequest className="w-3.5 h-3.5 text-[#4F6D56]" />
+              )}
+              <div className="text-left">
+                <span className="font-bold text-[#242220] mr-1.5 font-mono">{currentQueryId}:</span>
+                <span className="text-[#6B635A] group-hover:text-[#242220] font-medium truncate max-w-[180px] sm:max-w-[260px] inline-block align-bottom">
+                  {currentQueryTitle}
+                </span>
+              </div>
+              <span className="text-[10px] text-[#6B635A] ml-1 bg-white px-1.5 py-0.2 rounded border border-[#E6E0D5]">
+                Switch ▼
               </span>
-            </div>
-            <span className="text-[10px] text-[#6B635A] ml-1 bg-white px-1.5 py-0.2 rounded border border-[#E6E0D5]">
-              Switch ▼
-            </span>
-          </button>
+            </button>
+
+            {githubStatus?.linked && (
+              <span className="hidden md:inline-flex items-center gap-1 text-[10px] font-bold text-[#242220] bg-[#F1ECE4] border border-[#E6E0D5] px-2 py-1 rounded-lg">
+                <Github className="w-3 h-3 text-[#242220]" />
+                <span>@{githubStatus.login}</span>
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Right: Architecture Diagram + Subtle Refresh + Circular User on the Right */}

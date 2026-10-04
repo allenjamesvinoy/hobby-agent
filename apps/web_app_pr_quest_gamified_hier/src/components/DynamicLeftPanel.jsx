@@ -28,6 +28,7 @@ export default function DynamicLeftPanel({
   onSelectSymbol,
   onSelectFileByPath,
   onOpenArchModal,
+  onOpenArchTextModal,
   isLevelComplete,
   auditedSymbols = [],
   onToggleSymbolAudit,
@@ -67,13 +68,24 @@ export default function DynamicLeftPanel({
             Component flows showing added, modified, and removed services.
           </p>
 
-          <button
-            onClick={onOpenArchModal}
-            className="w-full mt-3 py-2 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-lg shadow-2xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-          >
-            <span>Open Architecture Diagram</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
+          <div className="grid grid-cols-2 gap-2 mt-3">
+            <button
+              type="button"
+              onClick={onOpenArchModal}
+              className="py-2 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-lg shadow-2xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <span>Diagram</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={onOpenArchTextModal || onOpenArchModal}
+              className="py-2 bg-white border border-[#E6E0D5] hover:bg-[#F9F6F0] text-[#242220] text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-[#C35832]" />
+              <span>Repo Docs</span>
+            </button>
+          </div>
         </div>
 
         {/* Architecture Standards Checklist (Now Spacious & Uncramped) */}
