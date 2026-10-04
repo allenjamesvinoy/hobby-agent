@@ -43,7 +43,7 @@ export default function HierarchicalDiffViewer({
   };
 
   const handleInlineConfirmFlag = (file) => {
-    if (!flagText.trim()) return;
+    const text = flagText.trim() || `Flagged under ${flagCategory}`;
 
     onAddComment(file.id, {
       authorId: currentUser?.id || 'alex',
@@ -51,12 +51,12 @@ export default function HierarchicalDiffViewer({
       authorAvatar: currentUser?.avatar || '👨‍💻',
       type: 'flag',
       category: flagCategory,
-      text: flagText.trim(),
+      text: text,
       timestamp: 'Just now'
     });
 
     onUpdateFileStatus(file.id, 'flagged');
-    onAddXp(40, `Flagged ${file.path} with required comment`, `flag-file-${file.id}`);
+    onAddXp(40, `Flagged ${file.path}`, `flag-file-${file.id}`);
     setFlaggingFileId(null);
     setFlagText('');
   };
@@ -282,7 +282,7 @@ export default function HierarchicalDiffViewer({
                         <div className="flex items-center justify-between pb-2 border-b border-[#F1ECE4]">
                           <div className="flex items-center gap-1.5 text-xs font-bold text-[#C35832]">
                             <AlertTriangle className="w-3.5 h-3.5" />
-                            <span>Flag Reason (Required)</span>
+                            <span>Flag Reason</span>
                           </div>
                           <button
                             onClick={() => setFlaggingFileId(null)}
@@ -293,7 +293,7 @@ export default function HierarchicalDiffViewer({
                         </div>
 
                         <p className="text-[11px] text-[#6B635A] mt-2 leading-relaxed">
-                          Explain what logic is flawed or what changes are required before this file can be approved:
+                          Select issue category and provide any optional context for peers:
                         </p>
 
                         {/* Category selection */}
@@ -319,7 +319,7 @@ export default function HierarchicalDiffViewer({
                           autoFocus
                           value={flagText}
                           onChange={e => setFlagText(e.target.value)}
-                          placeholder="e.g. The rotateSessionToken() routine must validate that the salt meets minimum 256-bit entropy standards..."
+                          placeholder="Optional details: e.g. Need entropy verification, missing fallback check, etc."
                           className="w-full mt-2.5 p-2.5 bg-[#F9F6F0] border border-[#E6E0D5] rounded-lg text-xs text-[#242220] focus:outline-none focus:border-[#C35832] resize-none leading-relaxed"
                         />
 
@@ -333,9 +333,8 @@ export default function HierarchicalDiffViewer({
                           </button>
                           <button
                             type="button"
-                            disabled={!flagText.trim()}
                             onClick={() => handleInlineConfirmFlag(file)}
-                            className="px-3 py-1.5 bg-[#C35832] hover:bg-[#A84725] disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg shadow-xs flex items-center gap-1 cursor-pointer transition-colors"
+                            className="px-3 py-1.5 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-lg shadow-xs flex items-center gap-1 cursor-pointer transition-colors"
                           >
                             <span>Confirm Flag</span>
                             <Send className="w-3 h-3" />
