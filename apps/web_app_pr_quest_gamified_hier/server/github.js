@@ -10,6 +10,7 @@ import {
   synthesizeArchitectureDiagram,
   extractMarkdownChecklist 
 } from './heuristicSynthesizer.js';
+import { chunkLargeFiles } from './locChunker.js';
 
 const GITHUB_API = 'https://api.github.com';
 const MAX_CRITERIA = 8;
@@ -312,19 +313,19 @@ export async function fetchRepoDocsAtHead(owner, repo, headSha, changedFiles = [
 
   const repoDocs = results.filter(Boolean);
 
-  // Secondary: README as architecture if none found
-  if (!repoDocs.some((d) => d.role === 'architecture')) {
+  // Secondary: README as readme doc (not architecture)
+  if (!repoDocs.some((d) => d.role === 'readme')) {
     const readme = await fetchDocForRole(
       owner,
       repo,
-      'architecture',
+      'readme',
       ['README.md', 'readme.md', 'docs/README.md'],
       headSha,
       changedPathSet,
       accessToken
     );
     if (readme) {
-      repoDocs.unshift({ ...readme, role: 'architecture', path: readme.path });
+      repoDocs.push({ ...readme, role: 'readme', path: readme.path });
     }
   }
 
@@ -616,17 +617,18 @@ export async function fetchPullRequestWorkspace(owner, repo, number, accessToken
     diffChunks: parsePatchToChunks(f.patch)
   }));
 
-  // 3. Synthesize standards & architecture text
-  const docStandards = buildStandardsFromDocs(repoDocs);
-  const standards = (docStandards && docStandards.length > 0)
-    ? docStandards
-    : synthesizeStandards(files);
+  // 3. Architecture standards & text ONLY if an architecture doc is present
+  const hasArchitectureDoc = repoDocs.some(d => d.role === 'architecture' && d.content && d.content.trim());
+  const docStandards = hasArchitectureDoc ? buildStandardsFromDocs(repoDocs) : [];
+  const standards = (docStandards && docStandards.length > 0) ? docStandards : [];
+  const architectureText = hasArchitectureDoc ? buildArchitectureText(repoDocs) : '';
 
-  const architectureText = buildArchitectureText(repoDocs);
-
-  // 4. Synthesize test suites & diagram model
+  // 4. Test suites & diagram model (diagram ONLY if architecture doc present)
   const testSuites = synthesizeTestSuites(files, pr.title);
-  const architectureDiagramModel = synthesizeArchitectureDiagram(mappedFiles, pr.title);
+  const architectureDiagramModel = hasArchitectureDoc ? synthesizeArchitectureDiagram(mappedFiles, pr.title) : null;
+
+  // 5. Break down files exceeding 200 lines into logical chunks (file_name_part_1.ext, etc.)
+  const chunkedFiles = chunkLargeFiles(mappedFiles, 200);
 
   return {
     queryId: `GH-${owner}/${repo}#${pr.number}`,
@@ -648,7 +650,7 @@ export async function fetchPullRequestWorkspace(owner, repo, number, accessToken
         author: linkedIssue.author
       } : null
     },
-    files: mappedFiles,
+    files: chunkedFiles,
     repoDocs,
     architectureText,
     standards,

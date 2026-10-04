@@ -127,14 +127,23 @@ export default function DynamicLeftPanel({
           )}
 
           <div className="grid grid-cols-2 gap-2 mt-2.5">
-            <button
-              type="button"
-              onClick={onOpenArchModal}
-              className="py-1.5 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-lg shadow-2xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <span>Diagram</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
+            {hasArchitectureDoc ? (
+              <button
+                type="button"
+                onClick={onOpenArchModal}
+                className="py-1.5 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-lg shadow-2xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <span>Diagram</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            ) : (
+              <div
+                className="py-1.5 bg-[#F9F6F0] border border-[#E6E0D5] text-[#8C827A] text-xs font-medium rounded-lg flex items-center justify-center gap-1.5 select-none opacity-60"
+                title="Upload architecture.md to unlock diagram"
+              >
+                <span>🔒 Diagram Locked</span>
+              </div>
+            )}
             <button
               type="button"
               onClick={onOpenArchTextModal || onOpenArchModal}
@@ -146,94 +155,108 @@ export default function DynamicLeftPanel({
           </div>
         </div>
 
-        {/* Architecture Standards Checklist (Now Spacious & Uncramped) */}
-        <div className="bg-white border border-[#E6E0D5] rounded-xl p-4 shadow-sm flex flex-col">
-          <div className="border-b border-[#F1ECE4] pb-3 mb-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-[#242220] flex items-center gap-1.5">
-                <BookOpen className="w-3.5 h-3.5 text-[#C35832]" />
-                <span>Standard Practice Checklist</span>
-              </span>
-              <span className="text-xs text-[#4F6D56] font-bold bg-[#F4F8F5] px-2 py-0.5 rounded border border-[#4F6D56]/20">
-                {verifiedCount}/{architectureStandards.length} Audited
-              </span>
+        {/* Architecture Standards Checklist OR Locked State */}
+        {hasArchitectureDoc ? (
+          <div className="bg-white border border-[#E6E0D5] rounded-xl p-4 shadow-sm flex flex-col">
+            <div className="border-b border-[#F1ECE4] pb-3 mb-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-[#242220] flex items-center gap-1.5">
+                  <BookOpen className="w-3.5 h-3.5 text-[#C35832]" />
+                  <span>Standard Practice Checklist</span>
+                </span>
+                <span className="text-xs text-[#4F6D56] font-bold bg-[#F4F8F5] px-2 py-0.5 rounded border border-[#4F6D56]/20">
+                  {verifiedCount}/{architectureStandards.length} Audited
+                </span>
+              </div>
+              <p className="text-[11px] text-[#6B635A] mt-1.5 leading-relaxed">
+                Verify modules against architectural and security standards from uploaded architecture doc:
+              </p>
             </div>
-            <p className="text-[11px] text-[#6B635A] mt-1.5 leading-relaxed">
-              Verify Tier 1 modules against production security and resilience standards from <code className="bg-[#F1ECE4] px-1 rounded text-[10px]">docs/standards/</code>:
-            </p>
-          </div>
 
-          <div className="space-y-3 flex-1 overflow-y-auto max-h-[460px] pr-1">
-            {architectureStandards.map((std) => (
-              <div 
-                key={std.id}
-                className={`p-3 rounded-lg border transition-all ${
-                  std.completed 
-                    ? 'bg-[#F4F8F5] border-[#4F6D56]/30 text-[#4F6D56]' 
-                    : 'bg-[#FFFDF9] border-[#E6E0D5] text-[#242220] hover:border-[#C35832]/30'
-                }`}
-              >
-                <div className="flex items-start gap-2.5">
-                  <button 
-                    onClick={() => onToggleStandard(std.id)}
-                    className="mt-0.5 text-[#C35832] hover:scale-110 transition-transform flex-shrink-0 cursor-pointer"
-                    title={std.completed ? "Mark incomplete" : "Mark standard audited"}
-                  >
-                    {std.completed ? (
-                      <CheckSquare className="w-4 h-4 text-[#4F6D56]" />
-                    ) : ( 
-                      <Square className="w-4 h-4 text-[#6B635A]" />
-                    )}
-                  </button>
-                  <div className="text-xs flex-1">
-                    <div className="flex items-center justify-between gap-1 flex-wrap">
-                      <span className="font-bold text-[#242220]">{std.title}</span>
-                      <div className="flex items-center gap-1.5">
-                        {std.status === 'violation' ? (
-                          <span className="text-[9px] font-bold text-[#DC2626] bg-[#FEE2E2] px-1.5 py-0.2 rounded border border-[#DC2626]/20">
-                            ⚠️ Violation
+            <div className="space-y-3 flex-1 overflow-y-auto max-h-[460px] pr-1">
+              {architectureStandards.map((std) => (
+                <div 
+                  key={std.id}
+                  className={`p-3 rounded-lg border transition-all ${
+                    std.completed 
+                      ? 'bg-[#F4F8F5] border-[#4F6D56]/30 text-[#4F6D56]' 
+                      : 'bg-[#FFFDF9] border-[#E6E0D5] text-[#242220] hover:border-[#C35832]/30'
+                  }`}
+                >
+                  <div className="flex items-start gap-2.5">
+                    <button 
+                      onClick={() => onToggleStandard(std.id)}
+                      className="mt-0.5 text-[#C35832] hover:scale-110 transition-transform flex-shrink-0 cursor-pointer"
+                      title={std.completed ? "Mark incomplete" : "Mark standard audited"}
+                    >
+                      {std.completed ? (
+                        <CheckSquare className="w-4 h-4 text-[#4F6D56]" />
+                      ) : ( 
+                        <Square className="w-4 h-4 text-[#6B635A]" />
+                      )}
+                    </button>
+                    <div className="text-xs flex-1">
+                      <div className="flex items-center justify-between gap-1 flex-wrap">
+                        <span className="font-bold text-[#242220]">{std.title}</span>
+                        <div className="flex items-center gap-1.5">
+                          {std.status === 'violation' ? (
+                            <span className="text-[9px] font-bold text-[#DC2626] bg-[#FEE2E2] px-1.5 py-0.2 rounded border border-[#DC2626]/20">
+                              ⚠️ Violation
+                            </span>
+                          ) : std.status === 'warning' ? (
+                            <span className="text-[9px] font-bold text-[#D97706] bg-[#FEF3C7] px-1.5 py-0.2 rounded border border-[#D97706]/20">
+                              ⚡ Warning
+                            </span>
+                          ) : std.status === 'compliant' ? (
+                            <span className="text-[9px] font-bold text-[#2D6A4F] bg-[#EBF7EE] px-1.5 py-0.2 rounded border border-[#2D6A4F]/20">
+                              ✓ Compliant
+                            </span>
+                          ) : null}
+                          <span className="text-[9px] font-mono bg-[#F1ECE4] text-[#6B635A] px-1.5 py-0.2 rounded font-semibold">
+                            {std.id}
                           </span>
-                        ) : std.status === 'warning' ? (
-                          <span className="text-[9px] font-bold text-[#D97706] bg-[#FEF3C7] px-1.5 py-0.2 rounded border border-[#D97706]/20">
-                            ⚡ Warning
-                          </span>
-                        ) : std.status === 'compliant' ? (
-                          <span className="text-[9px] font-bold text-[#2D6A4F] bg-[#EBF7EE] px-1.5 py-0.2 rounded border border-[#2D6A4F]/20">
-                            ✓ Compliant
-                          </span>
-                        ) : null}
-                        <span className="text-[9px] font-mono bg-[#F1ECE4] text-[#6B635A] px-1.5 py-0.2 rounded font-semibold">
-                          {std.id}
-                        </span>
+                        </div>
                       </div>
-                    </div>
-                    <div className="text-[10px] text-[#C35832] font-semibold mt-0.5">
-                      {std.category}
-                    </div>
-                    <p className="text-[11px] text-[#6B635A] leading-relaxed mt-1">
-                      {std.description}
-                    </p>
-                    <div className="text-[9px] text-[#6B635A]/70 font-mono mt-1.5 flex items-center justify-between pt-1 border-t border-current/10">
-                      <span>Ref: {std.standardFile}</span>
-                      <span className="font-semibold text-[#4F6D56]">{std.completed ? "✓ Audited" : "Pending"}</span>
+                      <div className="text-[10px] text-[#C35832] font-semibold mt-0.5">
+                        {std.category}
+                      </div>
+                      <p className="text-[11px] text-[#6B635A] leading-relaxed mt-1">
+                        {std.description}
+                      </p>
+                      <div className="text-[9px] text-[#6B635A]/70 font-mono mt-1.5 flex items-center justify-between pt-1 border-t border-current/10">
+                        <span>Ref: {std.standardFile}</span>
+                        <span className="font-semibold text-[#4F6D56]">{std.completed ? "✓ Audited" : "Pending"}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
 
-          <div className="mt-3 pt-3 border-t border-[#F1ECE4] flex items-center justify-between text-[11px] text-[#6B635A]">
-            <span>Standard Verification</span>
-            <button
-              onClick={onOpenArchModal}
-              className="text-[#C35832] font-semibold hover:underline flex items-center gap-1 cursor-pointer"
-            >
-              <span>Inspect Architecture</span>
-              <ArrowRight className="w-3 h-3" />
-            </button>
+            <div className="mt-3 pt-3 border-t border-[#F1ECE4] flex items-center justify-between text-[11px] text-[#6B635A]">
+              <span>Standard Verification</span>
+              <button
+                onClick={onOpenArchModal}
+                className="text-[#C35832] font-semibold hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <span>Inspect Architecture</span>
+                <ArrowRight className="w-3 h-3" />
+              </button>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="bg-white border border-dashed border-[#E6E0D5] rounded-xl p-6 text-center space-y-3 shadow-2xs">
+            <div className="w-10 h-10 rounded-full bg-[#FBEFEF] text-[#C35832] flex items-center justify-center mx-auto">
+              <BookOpen className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-[#242220]">Architecture Standards Locked</h3>
+              <p className="text-[11px] text-[#6B635A] mt-1 leading-relaxed max-w-xs mx-auto">
+                No <code className="font-mono bg-[#F1ECE4] px-1 py-0.5 rounded text-[10px]">architecture.md</code> uploaded. Upload an architecture document above to unlock the architectural standards checklist and boundary diff diagram.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -270,6 +293,7 @@ export default function DynamicLeftPanel({
             const sym = catalog[symKey] || {};
             const isSelected = activeSymbol === symKey;
             const isAudited = auditedSymbols.includes(symKey);
+            const callers = Array.isArray(sym.callers) ? sym.callers : [];
 
             return (
               <div 
@@ -295,13 +319,13 @@ export default function DynamicLeftPanel({
                     >
                       {isAudited ? (
                         <CheckSquare className="w-4 h-4 text-[#4F6D56]" />
-                      ) : (
+                      ) : ( 
                         <Square className="w-4 h-4 text-[#6B635A]" />
                       )}
                     </button>
                     <span className="font-mono text-xs font-bold text-[#242220] flex items-center gap-1">
                       <FileCode className="w-3.5 h-3.5 text-[#C35832]" />
-                      {sym.name}()
+                      {sym.name || symKey}()
                     </span>
                   </div>
                   <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded border ${
@@ -309,49 +333,57 @@ export default function DynamicLeftPanel({
                       ? 'bg-white text-[#4F6D56] border-[#4F6D56]/30 font-semibold' 
                       : 'bg-white border-[#E6E0D5] text-[#6B635A]'
                   }`}>
-                    {sym.callers.length} consumers
+                    {callers.length} consumers
                   </span>
                 </div>
                 <div className="text-[10px] text-[#6B635A] font-mono mt-1 truncate pl-6">
-                  {sym.file}
+                  {sym.file || ''}
                 </div>
 
                 {/* Consumer list preview */}
-                <div className="mt-2 pt-1.5 border-t border-[#E6E0D5]/40 space-y-1 pl-6">
-                  {sym.callers.map((caller, cIdx) => (
-                    <div key={cIdx} className="text-[10px] text-[#242220]/80 flex items-center justify-between">
-                      <span className="font-mono truncate max-w-[170px]">{caller.file.split('/').pop()}</span>
-                      <span className="text-[9px] text-[#C35832] font-semibold">Line {caller.line}</span>
-                    </div>
-                  ))}
-                </div>
+                {callers.length > 0 && (
+                  <div className="mt-2 pt-1.5 border-t border-[#E6E0D5]/40 space-y-1 pl-6">
+                    {callers.map((caller, cIdx) => (
+                      <div key={cIdx} className="text-[10px] text-[#242220]/80 flex items-center justify-between">
+                        <span className="font-mono truncate max-w-[170px]">{(caller.file || '').split('/').pop()}</span>
+                        <span className="text-[9px] text-[#C35832] font-semibold">Line {caller.line || 1}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
 
         {/* Consumer Isolation Shortcuts */}
-        <div className="pt-3 border-t border-[#F1ECE4] space-y-2">
-          <label className="block text-[10px] font-bold uppercase tracking-wider text-[#6B635A]">
-            🎯 Quick Consumer Isolation
-          </label>
-          <div className="flex flex-col gap-1.5">
-            <button
-              onClick={() => onSelectFileByPath("src/context/SessionContext.jsx")}
-              className="text-left px-2.5 py-1.5 bg-[#F9F6F0] hover:bg-[#F1ECE4] border border-[#E6E0D5] rounded-md text-[11px] font-medium text-[#242220] flex items-center justify-between"
-            >
-              <span>SessionContext.jsx</span>
-              <span className="text-[10px] text-[#D08A29] font-bold">Tier 2</span>
-            </button>
-            <button
-              onClick={() => onSelectFileByPath("src/components/ProtectedRoute.jsx")}
-              className="text-left px-2.5 py-1.5 bg-[#F9F6F0] hover:bg-[#F1ECE4] border border-[#E6E0D5] rounded-md text-[11px] font-medium text-[#242220] flex items-center justify-between"
-            >
-              <span>ProtectedRoute.jsx</span>
-              <span className="text-[10px] text-[#D08A29] font-bold">Tier 2</span>
-            </button>
-          </div>
-        </div>
+        {(() => {
+          const uniqueCallerFiles = Array.from(new Set(
+            Object.values(catalog).flatMap(s => (Array.isArray(s.callers) ? s.callers : []).map(c => c.file))
+          )).filter(Boolean).slice(0, 4);
+
+          if (uniqueCallerFiles.length === 0) return null;
+
+          return (
+            <div className="pt-3 border-t border-[#F1ECE4] space-y-2">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-[#6B635A]">
+                🎯 Quick Consumer Isolation
+              </label>
+              <div className="flex flex-col gap-1.5">
+                {uniqueCallerFiles.map((cPath) => (
+                  <button
+                    key={cPath}
+                    onClick={() => onSelectFileByPath(cPath)}
+                    className="text-left px-2.5 py-1.5 bg-[#F9F6F0] hover:bg-[#F1ECE4] border border-[#E6E0D5] rounded-md text-[11px] font-medium text-[#242220] flex items-center justify-between cursor-pointer"
+                  >
+                    <span className="truncate max-w-[200px]">{cPath.split('/').pop()}</span>
+                    <span className="text-[10px] text-[#D08A29] font-bold shrink-0">Consumer</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
       </div>
     );
   }

@@ -119,7 +119,9 @@ export default function ArchitectureDiagramModal({
   diffMermaid,
   diagramModel = null,
   currentQueryTitle = '',
-  jiraTicket = null
+  jiraTicket = null,
+  hasArchitectureDoc = false,
+  onUploadArchitecture = null
 }) {
   const isDynamic = Boolean(diagramModel && Array.isArray(diagramModel.nodes) && diagramModel.nodes.length > 0);
   const [activeTab, setActiveTab] = useState('diff'); // 'diff' | 'proposed' | 'baseline'
@@ -255,6 +257,44 @@ export default function ArchitectureDiagramModal({
         </div>
 
         {/* Diagram Canvas Body */}
+        {!hasArchitectureDoc ? (
+          <div className="flex-1 overflow-auto p-8 sm:p-12 bg-[#FDFCFB] flex flex-col justify-center items-center text-center select-none">
+            <div className="max-w-md w-full bg-white border border-dashed border-[#E6E0D5] rounded-2xl p-8 shadow-xs space-y-4">
+              <div className="w-14 h-14 rounded-2xl bg-[#FBEFEF] text-[#C35832] flex items-center justify-center mx-auto text-2xl shadow-2xs">
+                📐
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-[#242220]">Architecture Diagram Locked</h3>
+                <p className="text-xs text-[#6B635A] mt-2 leading-relaxed">
+                  No <code className="font-mono bg-[#F1ECE4] px-1 py-0.5 rounded text-[11px]">architecture.md</code> document has been uploaded for this review.
+                  Upload an architecture document in Level 2 to have Gemini evaluate architectural boundaries and generate an interactive diff diagram.
+                </p>
+              </div>
+              {onUploadArchitecture && (
+                <label className="inline-flex items-center gap-2 px-4 py-2 bg-[#C35832] hover:bg-[#A84725] text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer">
+                  <input
+                    type="file"
+                    accept=".md,.markdown,text/markdown,text/plain"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (ev) => {
+                        const content = ev.target?.result;
+                        if (typeof content === 'string') {
+                          onUploadArchitecture(content, file.name);
+                        }
+                      };
+                      reader.readAsText(file);
+                    }}
+                  />
+                  <span>Upload architecture.md</span>
+                </label>
+              )}
+            </div>
+          </div>
+        ) : (
         <div className="flex-1 overflow-auto p-4 sm:p-6 bg-[#FDFCFB] flex flex-col justify-center items-center relative select-none">
           <div className="w-full max-w-4xl bg-white border border-[#E6E0D5] rounded-2xl p-5 shadow-xs relative overflow-hidden">
             {/* Subtle Dot Grid Background */}
@@ -534,6 +574,7 @@ export default function ArchitectureDiagramModal({
             )}
           </div>
         </div>
+        )}
 
         {/* Minimal Footer */}
         <div className="px-6 py-2.5 border-t border-[#E6E0D5] bg-white flex items-center justify-between text-xs text-[#6B635A]">

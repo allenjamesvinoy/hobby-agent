@@ -22,6 +22,7 @@ import AuthModal from './components/AuthModal';
 import QuerySelectorModal from './components/QuerySelectorModal';
 import { buildSymbolCatalogFromFiles, isGithubWorkspaceFiles } from './utils/buildSymbolCatalog';
 import { buildArchitectureDiagram } from './utils/buildArchitectureDiagram';
+import { chunkLargeFiles } from './utils/chunkLargeFiles';
 import { Award, CheckCircle, AlertTriangle, Sparkles, ArrowRight, ShieldAlert, MessageSquare, Send, Check, Clock } from 'lucide-react';
 
 class ErrorBoundary extends React.Component {
@@ -226,8 +227,9 @@ function AppContent() {
             comments: Array.isArray(f.comments) ? f.comments : []
           };
         });
-        setFiles(safeFiles);
-        setActiveFileId(prev => (prev && safeFiles.some(f => f.id === prev)) ? prev : (safeFiles[0]?.id || null));
+        const chunkedFiles = chunkLargeFiles(safeFiles, 200);
+        setFiles(chunkedFiles);
+        setActiveFileId(prev => (prev && chunkedFiles.some(f => f.id === prev)) ? prev : (chunkedFiles[0]?.id || null));
       }
 
       if (sharedVerdicts && Array.isArray(sharedVerdicts)) {
@@ -235,9 +237,30 @@ function AppContent() {
       }
 
       if (queryTicket) setJiraTicket(queryTicket);
-      if (queryStandards) setStandards(queryStandards);
-      if (queryArch) setArchitectureText(queryArch);
-      if (queryDocs) setRepoDocs(queryDocs);
+      if (queryStandards && Array.isArray(queryStandards) && queryStandards.length > 0) {
+        setStandards(queryStandards);
+      } else if (!isGh && queryId === 'PR-101') {
+        setStandards(initialStandards);
+      } else {
+        setStandards([]);
+      }
+
+      if (queryArch && (queryId === 'PR-101' || queryArch !== defaultArchitecture)) {
+        setArchitectureText(queryArch);
+      } else if (!isGh && queryId === 'PR-101') {
+        setArchitectureText(defaultArchitecture);
+      } else {
+        setArchitectureText('');
+      }
+
+      if (queryDocs && Array.isArray(queryDocs) && queryDocs.length > 0) {
+        setRepoDocs(queryDocs);
+      } else if (!isGh && queryId === 'PR-101') {
+        setRepoDocs(initialReferences);
+      } else {
+        setRepoDocs([]);
+      }
+
       if (queryMeta) setGithubMeta(queryMeta);
 
       let resolvedSuites = (queryTestSuites && Array.isArray(queryTestSuites) && queryTestSuites.length > 0)
@@ -315,10 +338,12 @@ function AppContent() {
 
         if (Array.isArray(userProgress.standards) && userProgress.standards.length > 0) {
           setStandards(userProgress.standards);
-        } else if (queryStandards) {
+        } else if (queryStandards && queryStandards.length > 0) {
           setStandards(queryStandards.map(s => ({ ...s, completed: false })));
-        } else {
+        } else if (!isGh && queryId === 'PR-101') {
           setStandards(initialStandards.map(s => ({ ...s, completed: false })));
+        } else {
+          setStandards([]);
         }
 
         if (Array.isArray(userProgress.auditedSymbols)) {
@@ -337,8 +362,12 @@ function AppContent() {
             criteria: initialJiraTicket.criteria.map(ac => ({ ...ac, completed: false }))
           }));
         }
-        if (!queryStandards) {
+        if (queryStandards && queryStandards.length > 0) {
+          setStandards(queryStandards.map(s => ({ ...s, completed: false })));
+        } else if (!isGh && queryId === 'PR-101') {
           setStandards(initialStandards.map(s => ({ ...s, completed: false })));
+        } else {
+          setStandards([]);
         }
         setAuditedSymbols([]);
       }
@@ -452,6 +481,13 @@ function AppContent() {
     return true;
   };
 
+  const isGh = String(currentQueryId).startsWith('GH-');
+  const hasArchitectureDoc = Boolean(
+    repoDocs.some(d => (d.role === 'architecture' || d.path?.toLowerCase().endsWith('architecture.md')) && d.content && d.content.trim()) ||
+    (!isGh && currentQueryId === 'PR-101' && architectureText && architectureText.trim()) ||
+    (architectureText && architectureText !== defaultArchitecture && architectureText.trim())
+  );
+
   // Milestone objective calculations
   const completedAcCount = (jiraTicket.criteria || []).filter(ac => ac.completed).length;
   const totalAcCount = (jiraTicket.criteria || []).length;
@@ -459,9 +495,9 @@ function AppContent() {
 
   const completedStandardsCount = (standards || []).filter(s => s.completed).length;
   const totalStandardsCount = (standards || []).length;
-  const isLevel2Complete = totalStandardsCount > 0 && completedStandardsCount === totalStandardsCount;
+  const isLevel2Complete = hasArchitectureDoc && totalStandardsCount > 0 && completedStandardsCount === totalStandardsCount;
 
-  const isGithubWorkspace = isGithubWorkspaceFiles(files) || String(currentQueryId).startsWith('GH-');
+  const isGithubWorkspace = isGithubWorkspaceFiles(files) || isGh;
   const derivedSymbols = isGithubWorkspace ? buildSymbolCatalogFromFiles(files) : null;
   const symbolCatalog = customSymbolCatalog
     || (derivedSymbols?.catalog && Object.keys(derivedSymbols.catalog).length > 0
@@ -480,10 +516,9 @@ function AppContent() {
     }
   }, [currentQueryId, symbolKeys.join(',')]);
 
-  const architectureDiagramModel = customDiagramModel
-    || (isGithubWorkspace
-      ? buildArchitectureDiagram(files, architectureText, repoDocs)
-      : null);
+  const architectureDiagramModel = hasArchitectureDoc
+    ? (customDiagramModel || (isGithubWorkspace ? buildArchitectureDiagram(files, architectureText, repoDocs) : null))
+    : null;
 
   // --- GitHub PR Handlers ---
   const handleLoadRepo = async (repoInput) => {
@@ -540,16 +575,17 @@ function AppContent() {
       setCurrentQueryTitle(existing.data.title || title);
       await loadQueryState(queryId, currentUser);
     } else {
+      const chunkedFiles = chunkLargeFiles(workspace.files || [], 200);
       const nextStandards = Array.isArray(workspace.standards) && workspace.standards.length > 0
         ? workspace.standards.map(s => ({ ...s, completed: false }))
-        : initialStandards.map(s => ({ ...s, completed: false }));
+        : [];
       const nextArchitectureText = typeof workspace.architectureText === 'string' && workspace.architectureText.trim()
         ? workspace.architectureText
-        : defaultArchitecture;
+        : '';
       const nextRepoDocs = Array.isArray(workspace.repoDocs) ? workspace.repoDocs : [];
       const nextTestSuites = Array.isArray(workspace.testSuites) && workspace.testSuites.length > 0
         ? workspace.testSuites
-        : initialTestSuites;
+        : (workspace.meta?.testSuites && Array.isArray(workspace.meta.testSuites) ? workspace.meta.testSuites : []);
       const nextDiagramModel = workspace.architectureDiagramModel || null;
       const nextSymbolCatalog = workspace.symbolCatalog || null;
 
@@ -557,7 +593,7 @@ function AppContent() {
         queryId,
         title,
         jiraTicket: workspace.jiraTicket,
-        files: workspace.files,
+        files: chunkedFiles,
         references: [],
         standards: nextStandards,
         architectureText: nextArchitectureText,
@@ -580,8 +616,8 @@ function AppContent() {
       setCurrentQueryId(queryId);
       setCurrentQueryTitle(title);
       setJiraTicket(workspace.jiraTicket);
-      setFiles(workspace.files);
-      setActiveFileId(workspace.files[0]?.id || null);
+      setFiles(chunkedFiles);
+      setActiveFileId(chunkedFiles[0]?.id || null);
       setStandards(nextStandards);
       setArchitectureText(nextArchitectureText);
       setRepoDocs(nextRepoDocs);
@@ -702,8 +738,8 @@ function AppContent() {
       if (res.standards && Array.isArray(res.standards)) {
         setStandards(res.standards);
       }
-      if (res.architectureDiagramModel) {
-        setCustomDiagramModel(res.architectureDiagramModel);
+      if (res.architectureDiagramModel || res.diagramModel) {
+        setCustomDiagramModel(res.architectureDiagramModel || res.diagramModel);
       }
       if (res.architectureText) {
         setArchitectureText(res.architectureText);
@@ -1008,6 +1044,7 @@ function AppContent() {
         githubStatus={githubStatus}
         onTriggerAiPopulate={handleTriggerAiPopulate}
         isAiPopulating={isAiPopulating}
+        hasArchitectureDoc={hasArchitectureDoc}
       />
 
       {/* Main Workspace: Dynamically adapts per level */}
@@ -1043,6 +1080,7 @@ function AppContent() {
                 currentUser={currentUser}
                 onRemoveFlag={handleRemoveFlag}
                 onOpenVerdict={() => setIsVerdictOpen(true)}
+                symbolCatalog={symbolCatalog}
               />
             </section>
             <section className="lg:col-span-5 lg:sticky lg:top-4 self-start">
@@ -1082,7 +1120,7 @@ function AppContent() {
                 onToggleSymbolAudit={handleToggleSymbolAudit}
                 onUploadArchitecture={handleUploadArchitecture}
                 isAnalyzingArchitecture={isAnalyzingArchitecture}
-                hasArchitectureDoc={Boolean(architectureText || repoDocs.some(d => d.role === 'architecture'))}
+                hasArchitectureDoc={hasArchitectureDoc}
                 onLinkGithubIssue={handleLinkGithubIssue}
                 isLinkingIssue={isLinkingIssue}
                 isLevelComplete={
@@ -1108,6 +1146,7 @@ function AppContent() {
                   currentUser={currentUser}
                   onRemoveFlag={handleRemoveFlag}
                   onOpenVerdict={() => setIsVerdictOpen(true)}
+                  symbolCatalog={symbolCatalog}
                 />
               </section>
           </div>
@@ -1124,6 +1163,8 @@ function AppContent() {
         currentQueryTitle={currentQueryTitle}
         onSelectNodeFile={handleSelectFileByPath}
         onAddXp={handleAddXp}
+        hasArchitectureDoc={hasArchitectureDoc}
+        onUploadArchitecture={handleUploadArchitecture}
       />
 
       {/* Architecture Text Modal */}

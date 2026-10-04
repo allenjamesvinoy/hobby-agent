@@ -37,7 +37,8 @@ export default function QuestHeader({
   onNextGithubPr,
   githubStatus = null,
   onTriggerAiPopulate,
-  isAiPopulating = false
+  isAiPopulating = false,
+  hasArchitectureDoc = false
 }) {
   const levels = [
     { 
@@ -164,13 +165,15 @@ export default function QuestHeader({
             </button>
           )}
 
-          <button
-            onClick={onOpenArch}
-            className="px-3 py-1.5 bg-white border border-[#E6E0D5] hover:border-[#C35832]/40 text-[#242220] hover:bg-[#F9F6F0] rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
-            title="Open interactive architecture diagram"
-          >
-            <span>📐 Architecture Diagram</span>
-          </button>
+          {hasArchitectureDoc && (
+            <button
+              onClick={onOpenArch}
+              className="px-3 py-1.5 bg-white border border-[#E6E0D5] hover:border-[#C35832]/40 text-[#242220] hover:bg-[#F9F6F0] rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              title="Open interactive architecture diagram"
+            >
+              <span>📐 Architecture Diagram</span>
+            </button>
+          )}
 
           <button
             onClick={onReset}

@@ -576,6 +576,7 @@ app.post('/api/architecture/upload', async (req, res) => {
       architectureText: content,
       architectureSummary,
       diagramModel: architectureDiff,
+      architectureDiagramModel: architectureDiff,
       repoDocs: updatedDocs
     });
   } catch (err) {

@@ -15,7 +15,8 @@ export default function HierarchicalDiffViewer({
   onOpenInfo,
   currentUser,
   onRemoveFlag,
-  onOpenVerdict
+  onOpenVerdict,
+  symbolCatalog = null
 }) {
   const [commentInputs, setCommentInputs] = useState({});
   const [expandedFiles, setExpandedFiles] = useState({});
@@ -25,6 +26,14 @@ export default function HierarchicalDiffViewer({
   const [flagCategory, setFlagCategory] = useState('Security / Correctness');
 
   const detectSymbol = (content) => {
+    if (!content || typeof content !== 'string') return null;
+    const catalog = symbolCatalog || {};
+    const symKeys = Object.keys(catalog);
+    for (const key of symKeys) {
+      if (content.includes(key)) return key;
+      const baseName = key.split('.').pop();
+      if (baseName && baseName.length > 3 && content.includes(baseName)) return key;
+    }
     if (content.includes("rotateSessionToken")) return "rotateSessionToken";
     if (content.includes("interceptors.response.use") || (content.includes("response.use") && content.includes("apiClient"))) return "apiClient.interceptors.response.use";
     if (content.includes("SessionProvider")) return "SessionProvider";
@@ -215,6 +224,11 @@ export default function HierarchicalDiffViewer({
                   {file.specTag && (
                     <span className="text-[10px] bg-[#F1ECE4] text-[#6B635A] px-1.5 py-0.5 rounded font-mono shrink-0">
                       Spec: {file.specTag}
+                    </span>
+                  )}
+                  {file.isSplitPart && (
+                    <span className="text-[10px] bg-[#EBF3EC] text-[#4F6D56] border border-[#4F6D56]/30 font-bold px-2 py-0.5 rounded font-mono shrink-0">
+                      {file.partLabel || `Part ${file.partIndex} of ${file.totalParts}`}
                     </span>
                   )}
                 </div>

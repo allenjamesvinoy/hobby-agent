@@ -38,6 +38,21 @@ export default function FunctionInspectorPanel({
   const currentSymKey = activeSymbolKey || activeSymbol.name || 'rotateSessionToken';
   const isCurrentAudited = auditedSymbols.includes(currentSymKey);
 
+  const rawCode = activeSymbol.modifiedCode || activeSymbol.code;
+  const displayCode = typeof rawCode === 'string'
+    ? rawCode
+    : rawCode
+      ? JSON.stringify(rawCode, null, 2)
+      : '// No implementation code available for this symbol';
+
+  const displaySignature = typeof activeSymbol.signature === 'string'
+    ? activeSymbol.signature
+    : `${currentSymKey}()`;
+
+  const displayFile = typeof activeSymbol.file === 'string'
+    ? activeSymbol.file
+    : '';
+
   return (
     <div className="sticky top-4 bg-white border border-[#E6E0D5] rounded-xl p-4 shadow-sm flex flex-col space-y-4 max-h-[calc(100vh-6rem)] overflow-y-auto">
       {/* Top Banner: Symbol Selector */}
@@ -87,11 +102,11 @@ export default function FunctionInspectorPanel({
               {activeSymbol.type || 'function'}
             </span>
             <span className="text-xs font-mono text-[#6B635A] truncate">
-              {activeSymbol.file}
+              {displayFile}
             </span>
           </div>
           <h3 className="text-sm font-bold text-[#242220] font-mono mt-1.5 truncate">
-            {activeSymbol.signature || `${currentSymKey}()`}
+            {displaySignature}
           </h3>
         </div>
 
@@ -115,7 +130,7 @@ export default function FunctionInspectorPanel({
       {/* Function Code */}
       <div className="border border-[#E6E0D5] rounded-xl overflow-hidden bg-white shadow-2xs">
         <pre className="p-4 bg-white font-mono text-xs leading-relaxed text-[#242220] overflow-x-auto">
-          {activeSymbol.modifiedCode || activeSymbol.code}
+          {displayCode}
         </pre>
       </div>
     </div>

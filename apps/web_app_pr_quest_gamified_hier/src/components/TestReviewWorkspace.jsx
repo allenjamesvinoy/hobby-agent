@@ -428,13 +428,13 @@ export default function TestReviewWorkspace({
 
                       {/* Spacious, Roomy Code Container */}
                       <pre className="bg-[#1E1E1E] text-[#D4D4D4] p-5 rounded-xl font-mono text-xs leading-relaxed overflow-x-auto h-[480px] shadow-inner select-text">
-                        <code>{activeTest.code}</code>
+                        <code>{typeof activeTest.code === 'string' ? activeTest.code : JSON.stringify(activeTest.code || '', null, 2)}</code>
                       </pre>
 
                       {/* Insight Callout */}
                       {activeTest.notes && (
                         <div className="text-[11px] text-[#6B635A] font-medium pt-1">
-                          💡 <span className="text-[#242220] font-semibold">Note:</span> {activeTest.notes}
+                          💡 <span className="text-[#242220] font-semibold">Note:</span> {typeof activeTest.notes === 'string' ? activeTest.notes : JSON.stringify(activeTest.notes)}
                         </div>
                       )}
                     </div>
@@ -470,7 +470,7 @@ export default function TestReviewWorkspace({
 
                       {/* Spacious, Roomy Target Code Container */}
                       <pre className="bg-[#FFFDF9] border border-[#E6E0D5] text-[#242220] p-5 rounded-xl font-mono text-xs leading-relaxed overflow-x-auto h-[480px] shadow-inner select-text">
-                        <code>{activeTest.testedFunctionCode}</code>
+                        <code>{typeof activeTest.testedFunctionCode === 'string' ? activeTest.testedFunctionCode : JSON.stringify(activeTest.testedFunctionCode || '', null, 2)}</code>
                       </pre>
                     </div>
                   </div>
