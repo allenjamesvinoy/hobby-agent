@@ -134,18 +134,17 @@ class DatabaseManager {
         };
       });
 
-      const initialVerdicts = [
-        {
-          userId: 'alex',
-          userName: 'Alex Chen',
-          userAvatar: '👨‍💻',
-          verdict: 'changes_requested',
-          notes: 'Requested changes on SessionManager.js: must enforce 256-bit salt entropy validation before persisting tokens.',
-          timestamp: '10 mins ago'
-        }
-      ];
+      const initialVerdicts = [];
 
       this.saveQuery('PR-101', 'PR #101: Session Token Rotation & Salt Validation', freshFiles, initialVerdicts);
+    } else {
+      // Clean up legacy pre-seeded Alex verdict from initial mock if present
+      try {
+        if (existingPr101.verdicts && existingPr101.verdicts.some(v => v.userId === 'alex' && v.notes?.includes('must enforce 256-bit salt entropy validation'))) {
+          const cleaned = existingPr101.verdicts.filter(v => !(v.userId === 'alex' && v.notes?.includes('must enforce 256-bit salt entropy validation')));
+          this.saveQuery('PR-101', existingPr101.title, existingPr101.files, cleaned);
+        }
+      } catch (_) {}
     }
 
     // Seed PR-102
@@ -202,16 +201,7 @@ class DatabaseManager {
         query_id: 'PR-101',
         title: 'PR #101: Session Token Rotation & Salt Validation',
         files_json: JSON.stringify(freshFiles),
-        verdicts_json: JSON.stringify([
-          {
-            userId: 'alex',
-            userName: 'Alex Chen',
-            userAvatar: '👨‍💻',
-            verdict: 'changes_requested',
-            notes: 'Requested changes on SessionManager.js: must enforce 256-bit salt entropy validation before persisting tokens.',
-            timestamp: '10 mins ago'
-          }
-        ]),
+        verdicts_json: JSON.stringify([]),
         updated_at: new Date().toISOString()
       };
     }

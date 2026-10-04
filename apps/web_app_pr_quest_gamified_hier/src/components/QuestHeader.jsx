@@ -45,21 +45,21 @@ export default function QuestHeader({
       name: "2. Core Architecture", 
       desc: "Tier 1 logic & standards",
       statsText: `${completedStandardsCount}/${totalStandardsCount} Audited`,
-      isDone: unlockedLevel > 2 || isLevel2Complete
+      isDone: unlockedLevel > 2 || (unlockedLevel >= 2 && isLevel2Complete)
     },
     { 
       num: 3, 
       name: "3. Blast Radius", 
       desc: "Downstream call-sites",
       statsText: `${completedSymbolsCount}/${totalSymbolsCount} Audited`,
-      isDone: unlockedLevel > 3 || isLevel3Complete
+      isDone: unlockedLevel > 3 || (unlockedLevel >= 3 && isLevel3Complete)
     },
     { 
       num: 4, 
       name: "4. Tests & Verdict", 
       desc: "Unit tests & sign-off",
       statsText: `${reviewedCount}/${totalFiles} Reviewed`,
-      isDone: isVerdictSubmitted || (unlockedLevel >= 4 && isLevel4Complete)
+      isDone: unlockedLevel >= 4 && (isVerdictSubmitted || isLevel4Complete)
     }
   ];
 
@@ -201,8 +201,8 @@ export default function QuestHeader({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-3 pt-3 border-t border-[#F1ECE4]">
         {levels.map((lvl) => {
           const isActive = level === lvl.num;
-          const isCompleted = lvl.isDone;
           const isLocked = lvl.num > unlockedLevel;
+          const isCompleted = !isLocked && lvl.isDone;
 
           return (
             <div key={lvl.num} className="relative group">
