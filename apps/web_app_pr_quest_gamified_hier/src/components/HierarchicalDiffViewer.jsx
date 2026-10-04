@@ -182,50 +182,32 @@ export default function HierarchicalDiffViewer({
               }`}
             >
               {/* File Header */}
-              <div className="bg-[#FFFDF9] border-b border-[#E6E0D5] px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+              <div className="bg-[#FFFDF9] border-b border-[#E6E0D5] px-4 py-2.5 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5 min-w-0">
                   <button 
                     onClick={(e) => { e.stopPropagation(); toggleExpand(file.id); }}
-                    className="text-[#6B635A] hover:text-[#242220] cursor-pointer"
+                    className="text-[#6B635A] hover:text-[#242220] cursor-pointer shrink-0"
+                    title={isExpanded ? "Collapse diff" : "Expand diff"}
                   >
                     {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   </button>
-                  <div className="truncate">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-[#242220] truncate">{file.path}</span>
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${tierBadgeColor}`}>
-                        {file.tier}
-                      </span>
-                      {flaggedReviewers.length > 0 && (
-                        <span className="text-[10px] bg-[#FFF8F6] text-[#C35832] border border-[#F7D8D0] px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
-                          <ShieldAlert className="w-3 h-3" />
-                          <span>Flagged by {flaggedReviewers.join(', ')}</span>
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[10px] text-[#6B635A] flex items-center gap-1">
-                        <Star className="w-3 h-3 text-[#D08A29] fill-current" /> Importance: {file.importance}/100
-                      </span>
-                      {file.specTag && (
-                        <span className="text-[10px] bg-[#F1ECE4] text-[#6B635A] px-1.5 py-0.2 rounded font-mono">
-                          Spec: {file.specTag}
-                        </span>
-                      )}
-                      {(file.comments || []).length > 0 && (
-                        <span className="text-[10px] text-[#6B635A] flex items-center gap-1">
-                          <MessageSquare className="w-3 h-3" />
-                          {file.comments.length} {file.comments.length === 1 ? 'comment' : 'comments'}
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                  <span className="text-sm font-bold font-mono text-[#242220] truncate" title={file.path}>
+                    {file.path}
+                  </span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded border shrink-0 ${tierBadgeColor}`}>
+                    {file.tier}
+                  </span>
+                  {file.specTag && (
+                    <span className="text-[10px] bg-[#F1ECE4] text-[#6B635A] px-1.5 py-0.5 rounded font-mono shrink-0">
+                      Spec: {file.specTag}
+                    </span>
+                  )}
                 </div>
 
-                {/* Team Status Tally & User Review Actions */}
-                <div className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                {/* Team Status Tally & User Review Actions (Single Row, No Wrap) */}
+                <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
                   {/* Per code bit: Team Status Iconography */}
-                  <div className="flex items-center gap-1.5 mr-1">
+                  <div className="flex items-center gap-1">
                     <span 
                       className={`text-xs px-2 py-1 rounded-lg font-bold flex items-center gap-1 border transition-colors ${
                         approvedReviewers.length > 0 
@@ -254,30 +236,27 @@ export default function HierarchicalDiffViewer({
                   {/* Current User Action Buttons */}
                   <button
                     onClick={() => handleApprove(file)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
                       currentUserStatus === 'approved'
                         ? 'bg-[#4F6D56] text-white shadow-xs'
                         : 'bg-white hover:bg-[#F4F8F5] text-[#4F6D56] border border-[#4F6D56]/30'
                     }`}
                   >
                     <Check className="w-3.5 h-3.5" />
-                    <span>{currentUserStatus === 'approved' ? '✓ You Approved' : 'Approve'}</span>
+                    <span>{currentUserStatus === 'approved' ? '✓ Approved' : 'Approve'}</span>
                   </button>
 
                   {currentUserStatus === 'flagged' ? (
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleRemoveFlag(file)}
-                        className="px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 bg-[#C35832] hover:bg-[#A84725] text-white shadow-xs transition-colors cursor-pointer group"
-                        title="Click to remove your flag on this file"
-                      >
-                        <AlertTriangle className="w-3.5 h-3.5" />
-                        <span>🚩 You Flagged</span>
-                        <span className="text-[10px] bg-black/20 group-hover:bg-black/35 px-1.5 py-0.5 rounded font-normal flex items-center gap-0.5 ml-0.5">
-                          <Trash2 className="w-3 h-3" /> Delete Flag
-                        </span>
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => handleRemoveFlag(file)}
+                      className="px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 bg-[#C35832] hover:bg-[#A84725] text-white shadow-xs transition-colors cursor-pointer group"
+                      title="Click to remove your flag on this file"
+                    >
+                      <span>🚩 You Flagged</span>
+                      <span className="text-[10px] bg-black/20 group-hover:bg-black/35 px-1 py-0.2 rounded font-bold ml-0.5">
+                        ✕
+                      </span>
+                    </button>
                   ) : (
                     <div className="relative">
                       <button
@@ -291,11 +270,11 @@ export default function HierarchicalDiffViewer({
                             setFlagCategory('Security / Correctness');
                           }
                         }}
-                        className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 bg-white hover:bg-[#FFF8F6] text-[#C35832] border border-[#C35832]/30 transition-colors cursor-pointer"
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 bg-white hover:bg-[#FFF8F6] text-[#C35832] border border-[#C35832]/30 transition-colors cursor-pointer"
                         title="Flag issue for peers"
                       >
                         <AlertTriangle className="w-3.5 h-3.5" />
-                        <span>Flag Issue</span>
+                        <span>Flag</span>
                       </button>
 
                     {/* Small text window that opens up near the flag section */}
