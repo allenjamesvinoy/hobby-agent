@@ -227,7 +227,7 @@ Analyze the PR files and Acceptance Criteria to derive:
 1. Symbol Catalog (Level 3 Function Inspector): 2 to 5 critical exported functions, methods, or components modified in the PR.
    - Assign risk tier: 1 (Critical core logic), 2 (Supporting layer), 3 (Edge/UI/Config).
    - Provide clean function signature, summary of blast radius, and 5-15 lines of representative modern implementation code.
-2. Test Suites (Level 4 Test Review Workspace): 2 to 4 realistic test suites with 3-5 unit, integration, and edge-case test items each.
+2. Test Suites (Level 4 Test Review Workspace): 3 to 5 realistic test cases covering happy path, contract validations, and error boundaries.
 
 Return strictly valid JSON conforming to this schema:
 {
@@ -245,19 +245,23 @@ Return strictly valid JSON conforming to this schema:
   },
   "testSuites": [
     {
-      "id": "suite-1",
-      "title": "Name of test suite (e.g. Auth Token Expiration Suite)",
-      "file": "tests/unit/token.test.js",
-      "status": "passed",
-      "tests": [
-        {
-          "id": "t1-1",
-          "name": "should reject invalid signature with 401 Unauthorized",
-          "status": "passed",
-          "duration": "14ms",
-          "type": "unit"
-        }
-      ]
+      "id": "test-1",
+      "suiteName": "Core Verification Suite",
+      "testName": "should successfully validate inputs and execute core flow",
+      "file": "tests/core.test.js",
+      "targetSymbol": "functionOrSymbolName",
+      "targetFile": "path/to/source.js",
+      "targetLines": "1-35",
+      "status": "pass",
+      "executionMs": 14,
+      "assertionsCount": 2,
+      "assertions": [
+        { "text": "expect(res).toBeDefined()", "status": "pass", "label": "Contract Verification" },
+        { "text": "expect(res.status).toBe(200)", "status": "pass", "label": "Response State" }
+      ],
+      "code": "it('should successfully validate inputs', async () => {\n  const res = await target();\n  expect(res).toBeDefined();\n});",
+      "testedFunctionCode": "/* Representative production function code snippet */",
+      "notes": "Verified against production logic."
     }
   ]
 }`;
@@ -272,9 +276,79 @@ Modified Files:
 ${files.map(f => `${f.path} (+${f.additions || 0}/-${f.deletions || 0})`).join('\n')}
 `;
 
-  return await callGeminiApi({
+  const raw = await callGeminiApi({
     prompt,
     systemInstruction,
     apiKey
   });
+
+  if (raw && Array.isArray(raw.testSuites)) {
+    raw.testSuites = normalizeGeminiTestSuites(raw.testSuites, files);
+  }
+
+  return raw;
+}
+
+/**
+ * Normalizes test suites from either nested or flat schema into rich test cases.
+ */
+function normalizeGeminiTestSuites(rawSuites = [], files = []) {
+  const result = [];
+  rawSuites.forEach((item, suiteIdx) => {
+    if (!item) return;
+
+    // Nested suite case { title, tests: [ ... ] }
+    if (Array.isArray(item.tests) && item.tests.length > 0) {
+      const suiteName = item.suiteName || item.title || `Suite ${suiteIdx + 1}`;
+      const suiteFile = item.file || (files[0] ? `tests/${files[0].path.split('/').pop().replace(/\.[^.]+$/, '')}.test.js` : 'tests/suite.test.js');
+      item.tests.forEach((t, tIdx) => {
+        const targetFile = t.targetFile || files[0]?.path || 'src/index.js';
+        const targetSymbol = t.targetSymbol || t.symbol || 'handler';
+        result.push({
+          id: t.id || `test-${suiteIdx + 1}-${tIdx + 1}`,
+          suiteName,
+          testName: t.testName || t.name || `should verify ${targetSymbol}`,
+          file: t.file || suiteFile,
+          targetSymbol,
+          targetFile,
+          targetLines: t.targetLines || '1-40',
+          status: t.status === 'fail' || t.status === 'warning' ? 'warning' : 'pass',
+          executionMs: t.executionMs || 15,
+          assertionsCount: t.assertionsCount || (t.assertions?.length) || 2,
+          assertions: Array.isArray(t.assertions) && t.assertions.length > 0 ? t.assertions : [
+            { text: `expect(${targetSymbol}).toBeDefined()`, status: 'pass', label: 'Export Verification' },
+            { text: 'expect(res.status).toBe(200)', status: 'pass', label: 'Contract Integrity' }
+          ],
+          code: t.code || `it('${t.testName || t.name || 'should pass'}', async () => {\n  const res = await ${targetSymbol}();\n  expect(res).toBeDefined();\n});`,
+          testedFunctionCode: t.testedFunctionCode || `// Implementation in ${targetFile}\nexport async function ${targetSymbol}() {\n  return { status: 200 };\n}`,
+          notes: t.notes || `Verified against ${targetFile}`
+        });
+      });
+      return;
+    }
+
+    // Flat test case
+    const targetFile = item.targetFile || files[0]?.path || 'src/index.js';
+    const targetSymbol = item.targetSymbol || item.symbol || 'handler';
+    result.push({
+      id: item.id || `test-${suiteIdx + 1}`,
+      suiteName: item.suiteName || item.title || 'Verification Suite',
+      testName: item.testName || item.name || `should verify ${targetSymbol}`,
+      file: item.file || 'tests/index.test.js',
+      targetSymbol,
+      targetFile,
+      targetLines: item.targetLines || '1-40',
+      status: item.status === 'fail' || item.status === 'warning' ? 'warning' : 'pass',
+      executionMs: item.executionMs || 14,
+      assertionsCount: item.assertionsCount || (item.assertions?.length) || 2,
+      assertions: Array.isArray(item.assertions) && item.assertions.length > 0 ? item.assertions : [
+        { text: `expect(${targetSymbol}).toBeDefined()`, status: 'pass', label: 'Export Verification' },
+        { text: 'expect(res).toBeDefined()', status: 'pass', label: 'Contract Integrity' }
+      ],
+      code: item.code || `it('${item.testName || item.name || 'should pass'}', async () => {\n  expect(true).toBe(true);\n});`,
+      testedFunctionCode: item.testedFunctionCode || `// Implementation in ${targetFile}\nexport function ${targetSymbol}() {\n  return true;\n}`,
+      notes: item.notes || 'Verified test case'
+    });
+  });
+  return result;
 }
