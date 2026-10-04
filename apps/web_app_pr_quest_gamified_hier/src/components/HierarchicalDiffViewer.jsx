@@ -258,7 +258,7 @@ export default function HierarchicalDiffViewer({
                     }`}
                   >
                     <Check className="w-3.5 h-3.5" />
-                    <span>{currentUserStatus === 'approved' ? '✓ Approved' : 'Approve'}</span>
+                    <span>{currentUserStatus === 'approved' ? 'Approved' : 'Approve'}</span>
                   </button>
 
                   {currentUserStatus === 'flagged' ? (

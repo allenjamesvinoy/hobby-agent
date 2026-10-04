@@ -713,238 +713,202 @@ function AppContent() {
         >
           <div 
             onClick={(e) => e.stopPropagation()}
-            className="bg-white border border-[#E6E0D5] rounded-2xl max-w-xl w-full shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+            className="bg-white border border-[#E6E0D5] rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
           >
             {/* Modal Header */}
-            <div className="bg-[#FFF8F6] border-b border-[#F7D8D0] p-5 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-[#C35832] text-white rounded-xl shadow-xs">
-                  <Award className="w-5 h-5" />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-[#242220]">Team Review Verdict & Sign-Off</h2>
-                  <p className="text-xs text-[#6B635A]">
-                    Target: <span className="font-mono font-bold text-[#C35832]">{currentQueryId}</span>
-                  </p>
-                </div>
+            <div className="p-5 border-b border-[#F1ECE4] flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-bold text-[#242220]">Submit PR Review</h2>
+                <p className="text-xs text-[#6B635A] mt-0.5">
+                  <span className="font-mono font-bold text-[#C35832]">{currentQueryId}</span>
+                  <span className="mx-1.5">•</span>
+                  <span>Reviewing as <strong className="text-[#242220]">@{currentUser.username || currentUser.id}</strong></span>
+                </p>
               </div>
               <button 
                 onClick={() => setIsVerdictOpen(false)}
-                className="text-[#6B635A] hover:text-[#242220] p-1.5 rounded-lg hover:bg-black/5 transition-colors cursor-pointer"
+                className="text-[#8C827A] hover:text-[#242220] p-1.5 rounded-lg hover:bg-[#F9F6F0] transition-colors cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <div className="p-6 space-y-4 overflow-y-auto flex-1">
-              {/* File Approvals Summary Cards */}
-              <div className="grid grid-cols-3 gap-3 text-center">
-                <div className="bg-[#F4F8F5] border border-[#4F6D56]/20 rounded-xl p-3">
-                  <div className="text-xl font-extrabold text-[#4F6D56]">{approvedCount}</div>
-                  <div className="text-[10px] text-[#6B635A] uppercase font-bold">Approved</div>
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
+              {/* Review Scope / Status Bar */}
+              <div className="flex items-center justify-between px-3.5 py-2.5 bg-[#F9F6F0] rounded-xl text-xs border border-[#E6E0D5]">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-[#242220]">Scope:</span>
+                  <span className="text-[#4F6D56] font-bold">{approvedCount} approved</span>
+                  {flaggedCount > 0 && (
+                    <>
+                      <span className="text-[#8C827A]">•</span>
+                      <span className="text-[#C35832] font-bold">{flaggedCount} flagged</span>
+                    </>
+                  )}
+                  {pendingCount > 0 && (
+                    <>
+                      <span className="text-[#8C827A]">•</span>
+                      <span className="text-[#D08A29] font-bold">{pendingCount} pending</span>
+                    </>
+                  )}
                 </div>
-                <div className="bg-[#FFF8F6] border border-[#C35832]/20 rounded-xl p-3">
-                  <div className="text-xl font-extrabold text-[#C35832]">{flaggedCount}</div>
-                  <div className="text-[10px] text-[#6B635A] uppercase font-bold">Flagged</div>
-                </div>
-                <div className="bg-[#FFFDF9] border border-[#D08A29]/20 rounded-xl p-3">
-                  <div className="text-xl font-extrabold text-[#D08A29]">{pendingCount}</div>
-                  <div className="text-[10px] text-[#6B635A] uppercase font-bold">Pending</div>
-                </div>
-              </div>
-
-              {pendingCount > 0 && (
-                <div className="bg-[#FFFDF9] border border-[#D08A29]/30 rounded-xl p-3 flex items-start justify-between gap-3 text-xs">
-                  <div className="flex items-start gap-2">
-                    <AlertTriangle className="w-4 h-4 text-[#D08A29] mt-0.5 shrink-0" />
-                    <span className="text-[#6B635A]">
-                      You have <strong className="text-[#242220]">{pendingCount} pending files</strong>. Approve them to complete final review:
-                    </span>
-                  </div>
+                {pendingCount > 0 && (
                   <button
+                    type="button"
                     onClick={() => {
                       setFiles(prev => prev.map(f => f.status === 'pending' ? { ...f, status: 'approved' } : f));
                     }}
-                    className="px-2.5 py-1 bg-[#4F6D56] hover:bg-[#3D5442] text-white text-[11px] font-bold rounded-lg transition-colors cursor-pointer shrink-0"
+                    className="text-[11px] font-bold text-[#4F6D56] hover:underline cursor-pointer"
                   >
-                    Approve All
+                    Approve All Pending
                   </button>
-                </div>
-              )}
-
-              {/* Distributed Peer Verdicts Section */}
-              <div className="bg-[#F9F6F0] border border-[#E6E0D5] rounded-xl p-3.5 space-y-2.5">
-                <div className="text-xs font-bold uppercase tracking-wider text-[#6B635A] flex items-center justify-between">
-                  <span>Team Review Verdicts ({verdicts.length})</span>
-                  <span className="text-[11px] font-bold text-[#4F6D56]">
-                    {verdicts.filter(v => v.verdict === 'approved').length} of {verdicts.length} Approved
-                  </span>
-                </div>
-                {verdicts.length === 0 ? (
-                  <div className="text-xs text-[#6B635A] italic py-2">
-                    No peer verdicts recorded yet. Submit your verdict below to establish the baseline review.
-                  </div>
-                ) : (
-                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                    {verdicts.map((v, idx) => (
-                      <div key={idx} className="bg-white border border-[#E6E0D5] rounded-xl p-3 text-xs shadow-2xs">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xl">{v.userAvatar || '👤'}</span>
-                            <div>
-                              <span className="font-bold text-[#242220]">{v.userName}</span>
-                              <span className="text-[10px] text-[#6B635A] ml-1.5 bg-[#F1ECE4] px-1.5 py-0.2 rounded font-medium font-mono">
-                                @{v.userId || 'reviewer'}
-                              </span>
-                            </div>
-                          </div>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                            v.verdict === 'approved' 
-                              ? 'bg-[#F4F8F5] text-[#4F6D56] border border-[#4F6D56]/30' 
-                              : v.verdict === 'changes_requested'
-                                ? 'bg-[#FFF8F6] text-[#C35832] border border-[#F7D8D0]'
-                                : v.verdict === 'partial'
-                                  ? 'bg-[#FFFDF9] text-[#D08A29] border border-[#D08A29]/30'
-                                  : 'bg-[#F9F6F0] text-[#6B635A] border border-[#E6E0D5]'
-                          }`}>
-                            {v.verdict === 'approved' 
-                              ? '✓ APPROVED' 
-                              : v.verdict === 'changes_requested' 
-                                ? '⚠️ CHANGES REQUESTED' 
-                                : v.verdict === 'partial'
-                                  ? `⏳ PARTIAL REVIEW${v.reviewedCount !== undefined ? ` (${v.reviewedCount}/${v.totalFiles || files.length})` : ''}`
-                                  : '💬 COMMENT'}
-                          </span>
-                        </div>
-                        {v.notes && (
-                          <p className="mt-2 text-[11px] text-[#242220] pl-6 font-mono leading-relaxed bg-[#F9F6F0] p-2 rounded-lg">
-                            "{v.notes}"
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
                 )}
               </div>
 
-              {/* Submit Your Verdict Form */}
-              <div className="space-y-3 pt-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold uppercase tracking-wider text-[#6B635A]">
-                    Your Verdict as: <strong className="text-[#242220]">{currentUser.name}</strong>
-                  </label>
-                  <span className="text-[11px] text-[#6B635A] font-mono">@{currentUser.username || currentUser.id}</span>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {/* Verdict Selection */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-[#6B635A] uppercase tracking-wider">
+                  Review Verdict
+                </label>
+                <div className="grid grid-cols-2 gap-2.5">
                   <button
                     type="button"
                     onClick={() => setUserVerdictType('approved')}
-                    className={`p-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-2.5 ${
                       userVerdictType === 'approved'
-                        ? 'bg-[#4F6D56] text-white border-[#4F6D56] shadow-xs'
-                        : 'bg-white border-[#E6E0D5] text-[#4F6D56] hover:bg-[#F4F8F5]'
+                        ? 'bg-[#F4F8F5] border-[#4F6D56] text-[#4F6D56] ring-1 ring-[#4F6D56] shadow-2xs'
+                        : 'bg-white border-[#E6E0D5] text-[#242220] hover:bg-[#F9F6F0]'
                     }`}
                   >
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Approve (LGTM)</span>
+                    <Check className="w-4 h-4 mt-0.5 text-[#4F6D56] shrink-0" />
+                    <div>
+                      <div className="text-xs font-bold">Approve</div>
+                      <div className="text-[10px] text-[#6B635A]">Approve merging</div>
+                    </div>
                   </button>
+
                   <button
                     type="button"
                     onClick={() => setUserVerdictType('changes_requested')}
-                    className={`p-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-2.5 ${
                       userVerdictType === 'changes_requested'
-                        ? 'bg-[#C35832] text-white border-[#C35832] shadow-xs'
-                        : 'bg-white border-[#E6E0D5] text-[#C35832] hover:bg-[#FFF8F6]'
+                        ? 'bg-[#FFF8F6] border-[#C35832] text-[#C35832] ring-1 ring-[#C35832] shadow-2xs'
+                        : 'bg-white border-[#E6E0D5] text-[#242220] hover:bg-[#F9F6F0]'
                     }`}
                   >
-                    <AlertTriangle className="w-3.5 h-3.5" />
-                    <span>Request Changes</span>
+                    <AlertTriangle className="w-4 h-4 mt-0.5 text-[#C35832] shrink-0" />
+                    <div>
+                      <div className="text-xs font-bold">Request Changes</div>
+                      <div className="text-[10px] text-[#6B635A]">Block until fixes</div>
+                    </div>
                   </button>
+
                   <button
                     type="button"
                     onClick={() => setUserVerdictType('partial')}
-                    className={`p-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-2.5 ${
                       userVerdictType === 'partial'
-                        ? 'bg-[#D08A29] text-white border-[#D08A29] shadow-xs'
-                        : 'bg-white border-[#E6E0D5] text-[#D08A29] hover:bg-[#FFFDF9]'
+                        ? 'bg-[#FFFDF9] border-[#D08A29] text-[#D08A29] ring-1 ring-[#D08A29] shadow-2xs'
+                        : 'bg-white border-[#E6E0D5] text-[#242220] hover:bg-[#F9F6F0]'
                     }`}
                   >
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>Partial Review</span>
+                    <Clock className="w-4 h-4 mt-0.5 text-[#D08A29] shrink-0" />
+                    <div>
+                      <div className="text-xs font-bold">Partial Review</div>
+                      <div className="text-[10px] text-[#6B635A]">Submit review so far</div>
+                    </div>
                   </button>
+
                   <button
                     type="button"
                     onClick={() => setUserVerdictType('comment')}
-                    className={`p-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-2.5 ${
                       userVerdictType === 'comment'
-                        ? 'bg-[#6B635A] text-white border-[#6B635A] shadow-xs'
-                        : 'bg-white border-[#E6E0D5] text-[#6B635A] hover:bg-[#F9F6F0]'
+                        ? 'bg-[#F9F6F0] border-[#6B635A] text-[#242220] ring-1 ring-[#6B635A] shadow-2xs'
+                        : 'bg-white border-[#E6E0D5] text-[#242220] hover:bg-[#F9F6F0]'
                     }`}
                   >
-                    <MessageSquare className="w-3.5 h-3.5" />
-                    <span>Comment</span>
+                    <MessageSquare className="w-4 h-4 mt-0.5 text-[#6B635A] shrink-0" />
+                    <div>
+                      <div className="text-xs font-bold">Comment</div>
+                      <div className="text-[10px] text-[#6B635A]">General feedback</div>
+                    </div>
                   </button>
                 </div>
-
-                {/* Review Scope Summary Banner */}
-                <div className="bg-[#F9F6F0] border border-[#E6E0D5] rounded-xl p-3 text-xs space-y-1.5">
-                  <div className="flex items-center justify-between font-medium">
-                    <span className="text-[#242220]">Review Scope:</span>
-                    <span className="font-bold text-[#4F6D56]">
-                      {reviewedCount} of {files.length} files reviewed ({pendingCount} pending)
-                    </span>
-                  </div>
-                  {userVerdictType === 'approved' && pendingCount > 0 && (
-                    <label className="flex items-center gap-2 pt-1 text-[11px] text-[#6B635A] cursor-pointer border-t border-[#E6E0D5]/60">
-                      <input
-                        type="checkbox"
-                        checked={alsoApproveRemaining}
-                        onChange={(e) => setAlsoApproveRemaining(e.target.checked)}
-                        className="rounded border-[#E6E0D5] text-[#C35832] focus:ring-[#C35832]"
-                      />
-                      <span>Also mark remaining {pendingCount} unreviewed file(s) as approved</span>
-                    </label>
-                  )}
-                  {userVerdictType === 'partial' && (
-                    <p className="text-[11px] text-[#D08A29] pt-1 border-t border-[#E6E0D5]/60">
-                      Submits your feedback for the {reviewedCount} reviewed file(s) while leaving remaining files in pending status.
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  <textarea
-                    rows="3"
-                    className="w-full bg-[#F9F6F0] border border-[#E6E0D5] rounded-xl p-3 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-[#C35832]"
-                    placeholder="Provide constructive review comments, architecture feedback, or handoff notes for your peer reviewers..."
-                    value={userVerdictNotes}
-                    onChange={(e) => setUserVerdictNotes(e.target.value)}
-                  />
-                </div>
               </div>
+
+              {/* Contextual checkbox when approving with pending files */}
+              {userVerdictType === 'approved' && pendingCount > 0 && (
+                <label className="flex items-center gap-2 p-2.5 bg-[#F9F6F0] border border-[#E6E0D5] rounded-xl text-xs text-[#6B635A] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={alsoApproveRemaining}
+                    onChange={(e) => setAlsoApproveRemaining(e.target.checked)}
+                    className="rounded border-[#E6E0D5] text-[#C35832] focus:ring-[#C35832]"
+                  />
+                  <span>Also mark remaining <strong className="text-[#242220]">{pendingCount} pending file(s)</strong> as approved</span>
+                </label>
+              )}
+
+              {/* Review Feedback Notes */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-[#6B635A] uppercase tracking-wider">
+                  Review Summary <span className="font-normal text-[#8C827A] normal-case">(optional)</span>
+                </label>
+                <textarea
+                  rows="3"
+                  className="w-full bg-[#F9F6F0]/50 border border-[#E6E0D5] rounded-xl p-3 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-[#C35832] focus:bg-white transition-all resize-none"
+                  placeholder="Leave review comments or handoff notes for your peer reviewers..."
+                  value={userVerdictNotes}
+                  onChange={(e) => setUserVerdictNotes(e.target.value)}
+                />
+              </div>
+
+              {/* Peer Verdicts (Only shown if verdicts exist) */}
+              {verdicts.length > 0 && (
+                <details className="text-xs group border-t border-[#F1ECE4] pt-2">
+                  <summary className="cursor-pointer text-[#6B635A] hover:text-[#242220] font-medium flex items-center justify-between py-1">
+                    <span>Peer Reviews ({verdicts.length})</span>
+                    <span className="text-[11px] text-[#4F6D56] font-bold">
+                      {verdicts.filter(v => v.verdict === 'approved').length} of {verdicts.length} approved
+                    </span>
+                  </summary>
+                  <div className="mt-2 space-y-2 max-h-36 overflow-y-auto">
+                    {verdicts.map((v, idx) => (
+                      <div key={idx} className="p-2.5 bg-[#F9F6F0] rounded-xl border border-[#E6E0D5] text-[11px]">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-[#242220]">@{v.userId || v.userName}</span>
+                          <span className={`font-bold px-1.5 py-0.5 rounded text-[10px] uppercase ${
+                            v.verdict === 'approved' ? 'bg-[#F4F8F5] text-[#4F6D56]' : 'bg-[#FFF8F6] text-[#C35832]'
+                          }`}>
+                            {v.verdict}
+                          </span>
+                        </div>
+                        {v.notes && <p className="mt-1 text-[#6B635A] font-mono">{v.notes}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
             </div>
 
             {/* Modal Footer */}
-            <div className="bg-[#F9F6F0] border-t border-[#E6E0D5] p-4 flex justify-between items-center">
-              <span className="text-xs text-[#6B635A]">
-                Persisted against <strong className="text-[#242220] font-mono">{currentQueryId}</strong>
-              </span>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setIsVerdictOpen(false)}
-                  className="px-4 py-2 bg-white border border-[#E6E0D5] text-xs font-medium rounded-xl hover:bg-[#FFFDF9] cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSubmitFinalVerdict}
-                  className="px-5 py-2 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
-                >
-                  <Award className="w-3.5 h-3.5" />
-                  <span>Submit Review Verdict</span>
-                </button>
-              </div>
+            <div className="bg-[#F9F6F0]/60 border-t border-[#E6E0D5] p-4 flex justify-end items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsVerdictOpen(false)}
+                className="px-4 py-2 bg-white border border-[#E6E0D5] text-xs font-semibold text-[#6B635A] rounded-xl hover:bg-[#F9F6F0] transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmitFinalVerdict}
+                className="px-5 py-2 bg-[#C35832] hover:bg-[#A84725] text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
+              >
+                <Award className="w-3.5 h-3.5" />
+                <span>Submit Verdict</span>
+              </button>
             </div>
           </div>
         </div>
