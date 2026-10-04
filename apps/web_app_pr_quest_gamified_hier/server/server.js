@@ -150,6 +150,18 @@ app.post('/api/comments', (req, res) => {
   });
 });
 
+// Remove reviewer's flag on a file (Shared state)
+app.delete('/api/queries/:queryId/files/:fileId/flags', (req, res) => {
+  const { queryId, fileId } = req.params;
+  const userId = req.headers['x-user-id'] || req.query.userId || req.body?.userId;
+  if (!userId) {
+    return res.status(400).json({ error: 'x-user-id header is required' });
+  }
+
+  const file = db.removeUserFlag(queryId, fileId, userId);
+  res.json({ success: true, file });
+});
+
 // Submit / Record individual reviewer verdict (Shared state)
 app.post('/api/verdict', (req, res) => {
   const { queryId, verdict } = req.body;

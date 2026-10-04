@@ -22,9 +22,9 @@ PR Quest is a distributed, collaborative code review workspace designed to trans
 
 ### 3. Reviewer Identity & 1-Click Fast Switch
 - **Pre-configured Reviewer Personas**:
-  - **Alex Chen** (Staff Infrastructure Engineer)
-  - **Sarah Lin** (Application Security Architect)
-  - **Marcus Brody** (QA & Reliability Lead)
+  - **reviewer_1**
+  - **reviewer_2**
+  - **reviewer_3**
 - **1-Click Switching**: Seamlessly test peer reviews and handoffs without entering passwords. Custom registration and sign-in are also supported.
 
 ### 4. 4-Stage Hierarchical Review Progression

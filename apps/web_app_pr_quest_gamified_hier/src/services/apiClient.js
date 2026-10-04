@@ -3,9 +3,9 @@
 const API_BASE = '/api';
 
 export const PRESET_USERS = [
-  { id: 'alex', username: 'alex', name: 'Alex Chen', avatar: '👨‍💻' },
-  { id: 'sarah', username: 'sarah', name: 'Sarah Lin', avatar: '👩‍💻' },
-  { id: 'marcus', username: 'marcus', name: 'Marcus Brody', avatar: '🧑‍🔬' }
+  { id: 'reviewer_1', username: 'reviewer_1', name: 'reviewer_1', avatar: '👨‍💻' },
+  { id: 'reviewer_2', username: 'reviewer_2', name: 'reviewer_2', avatar: '👩‍💻' },
+  { id: 'reviewer_3', username: 'reviewer_3', name: 'reviewer_3', avatar: '🧑‍🔬' }
 ];
 
 class ApiClient {
@@ -18,7 +18,13 @@ class ApiClient {
   getInitialUser() {
     try {
       const saved = localStorage.getItem('pr_quest_user');
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const u = JSON.parse(saved);
+        if (u.id === 'alex' || u.name === 'Alex Chen') return PRESET_USERS[0];
+        if (u.id === 'sarah' || u.name === 'Sarah Lin') return PRESET_USERS[1];
+        if (u.id === 'marcus' || u.name === 'Marcus Brody') return PRESET_USERS[2];
+        return u;
+      }
     } catch (_) {}
     return PRESET_USERS[0];
   }
@@ -256,6 +262,25 @@ class ApiClient {
     } catch (_) {}
 
     return { success: true, verdict: payload, isOnline: false };
+  }
+
+  async removeFlag(queryId, fileId, userId) {
+    if (this.isOnline) {
+      try {
+        const res = await fetch(`${API_BASE}/queries/${encodeURIComponent(queryId)}/files/${encodeURIComponent(fileId)}/flags`, {
+          method: 'DELETE',
+          headers: {
+            'x-user-id': userId
+          }
+        });
+        if (res.ok) {
+          return await res.json();
+        }
+      } catch (err) {
+        console.warn('[API] removeFlag failed:', err);
+      }
+    }
+    return { success: true };
   }
 }
 

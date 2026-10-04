@@ -20,11 +20,11 @@ if (!fs.existsSync(DATA_DIR)) {
 
 const DB_PATH = path.join(DATA_DIR, 'pr_quest.db');
 
-// Simple reviewer users without complex roles
+// Simple test reviewer accounts without human names
 export const PRESET_USERS = [
-  { id: 'alex', username: 'alex', name: 'Alex Chen', avatar: '👨‍💻' },
-  { id: 'sarah', username: 'sarah', name: 'Sarah Lin', avatar: '👩‍💻' },
-  { id: 'marcus', username: 'marcus', name: 'Marcus Brody', avatar: '🧑‍🔬' }
+  { id: 'reviewer_1', username: 'reviewer_1', name: 'reviewer_1', avatar: '👨‍💻' },
+  { id: 'reviewer_2', username: 'reviewer_2', name: 'reviewer_2', avatar: '👩‍💻' },
+  { id: 'reviewer_3', username: 'reviewer_3', name: 'reviewer_3', avatar: '🧑‍🔬' }
 ];
 
 class DatabaseManager {
@@ -90,7 +90,12 @@ class DatabaseManager {
   }
 
   seedInitialData() {
-    // Seed Preset Users (no roles)
+    // Clean up legacy human names if present
+    try {
+      this.sqlite.prepare(`DELETE FROM users WHERE id IN ('alex', 'sarah', 'marcus')`).run();
+    } catch (_) {}
+
+    // Seed Preset Users (no personal human names)
     for (const u of PRESET_USERS) {
       const existing = this.getUserById(u.id);
       if (!existing) {
@@ -105,20 +110,20 @@ class DatabaseManager {
     // Seed PR-101
     const existingPr101 = this.getQuery(null, 'PR-101');
     if (!existingPr101) {
-      // Seed files with 1 initial flag from Alex Chen on file-1 to demonstrate peer reviews
+      // Seed files with 1 initial flag from reviewer_1 on file-1 to demonstrate peer reviews
       const freshFiles = JSON.parse(JSON.stringify(initialFiles)).map((f, idx) => {
         if (idx === 0) {
           return {
             ...f,
             reviewerStatuses: {
-              alex: { status: 'flagged', userName: 'Alex Chen', timestamp: '10 mins ago' }
+              reviewer_1: { status: 'flagged', userName: 'reviewer_1', timestamp: '10 mins ago' }
             },
             comments: [
               {
-                id: 'c-alex-1',
+                id: 'c-rev1-1',
                 line: 8,
-                authorId: 'alex',
-                authorName: 'Alex Chen',
+                authorId: 'reviewer_1',
+                authorName: 'reviewer_1',
                 authorAvatar: '👨‍💻',
                 type: 'flag',
                 text: 'Critical: The rotateSessionToken() routine must validate that the salt meets minimum 256-bit entropy standards before writing to session state.',
@@ -138,11 +143,36 @@ class DatabaseManager {
 
       this.saveQuery('PR-101', 'PR #101: Session Token Rotation & Salt Validation', freshFiles, initialVerdicts);
     } else {
-      // Clean up legacy pre-seeded Alex verdict from initial mock if present
+      // Clean up legacy pre-seeded Alex verdict and rename Alex Chen flags
       try {
-        if (existingPr101.verdicts && existingPr101.verdicts.some(v => v.userId === 'alex' && v.notes?.includes('must enforce 256-bit salt entropy validation'))) {
-          const cleaned = existingPr101.verdicts.filter(v => !(v.userId === 'alex' && v.notes?.includes('must enforce 256-bit salt entropy validation')));
-          this.saveQuery('PR-101', existingPr101.title, existingPr101.files, cleaned);
+        let changed = false;
+        let files = existingPr101.files || [];
+        files = files.map(f => {
+          let updated = { ...f };
+          if (updated.reviewerStatuses && updated.reviewerStatuses.alex) {
+            updated.reviewerStatuses.reviewer_1 = { ...updated.reviewerStatuses.alex, userName: 'reviewer_1' };
+            delete updated.reviewerStatuses.alex;
+            changed = true;
+          }
+          if (updated.comments) {
+            updated.comments = updated.comments.map(c => {
+              if (c.authorId === 'alex' || c.authorName === 'Alex Chen') {
+                changed = true;
+                return { ...c, authorId: 'reviewer_1', authorName: 'reviewer_1' };
+              }
+              return c;
+            });
+          }
+          return updated;
+        });
+
+        const cleanedVerdicts = (existingPr101.verdicts || []).filter(v => !(v.userId === 'alex' || v.userName === 'Alex Chen'));
+        if (cleanedVerdicts.length !== (existingPr101.verdicts || []).length) {
+          changed = true;
+        }
+
+        if (changed) {
+          this.saveQuery('PR-101', existingPr101.title, files, cleanedVerdicts);
         }
       } catch (_) {}
     }
@@ -183,13 +213,13 @@ class DatabaseManager {
     if (!this.fallbackStore.review_queries['PR-101']) {
       const freshFiles = JSON.parse(JSON.stringify(initialFiles));
       freshFiles[0].reviewerStatuses = {
-        alex: { status: 'flagged', userName: 'Alex Chen', timestamp: '10 mins ago' }
+        reviewer_1: { status: 'flagged', userName: 'reviewer_1', timestamp: '10 mins ago' }
       };
       freshFiles[0].comments = [
         {
-          id: 'c-alex-1',
-          authorId: 'alex',
-          authorName: 'Alex Chen',
+          id: 'c-rev1-1',
+          authorId: 'reviewer_1',
+          authorName: 'reviewer_1',
           authorAvatar: '👨‍💻',
           type: 'flag',
           text: 'Critical: The rotateSessionToken() routine must validate that the salt meets minimum 256-bit entropy standards before writing to session state.',
@@ -511,6 +541,30 @@ class DatabaseManager {
       userName: userName || 'Reviewer',
       timestamp: 'Just now'
     };
+
+    this.saveQuery(queryId, query.title, query.files, query.verdicts);
+    return file;
+  }
+
+  // --- Remove Flag by User ---
+  removeUserFlag(queryId, fileId, userId) {
+    const query = this.getQuery(userId, queryId);
+    if (!query) return null;
+
+    const file = query.files.find(f => f.id === fileId);
+    if (!file) return null;
+
+    if (file.reviewerStatuses && file.reviewerStatuses[userId]) {
+      delete file.reviewerStatuses[userId];
+    }
+
+    if (file.comments) {
+      file.comments = file.comments.filter(c => !(c.type === 'flag' && (c.authorId === userId || c.authorName === userId)));
+    }
+
+    const anyFlagged = Object.values(file.reviewerStatuses || {}).some(s => s.status === 'flagged');
+    const anyApproved = Object.values(file.reviewerStatuses || {}).some(s => s.status === 'approved');
+    file.status = anyFlagged ? 'flagged' : anyApproved ? 'approved' : 'pending';
 
     this.saveQuery(queryId, query.title, query.files, query.verdicts);
     return file;

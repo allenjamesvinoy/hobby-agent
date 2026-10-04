@@ -433,6 +433,34 @@ function AppContent() {
     }
   };
 
+  const handleRemoveFlag = async (fileId, commentId) => {
+    setFiles(prev => prev.map(f => {
+      if (f.id === fileId) {
+        const nextStatuses = { ...(f.reviewerStatuses || {}) };
+        delete nextStatuses[currentUser.id];
+
+        const nextComments = (f.comments || []).filter(c => {
+          if (commentId) return c.id !== commentId;
+          return !(c.type === 'flag' && (c.authorId === currentUser.id || c.authorName === currentUser.name));
+        });
+
+        const anyFlagged = Object.values(nextStatuses).some(s => s.status === 'flagged');
+        const anyApproved = Object.values(nextStatuses).some(s => s.status === 'approved');
+        const nextStatus = anyFlagged ? 'flagged' : anyApproved ? 'approved' : 'pending';
+
+        return {
+          ...f,
+          status: nextStatus,
+          reviewerStatuses: nextStatuses,
+          comments: nextComments
+        };
+      }
+      return f;
+    }));
+
+    await api.removeFlag(currentQueryId, fileId, currentUser.id);
+  };
+
   const handleToggleStandard = (id) => {
     setStandards(prev => prev.map(s => {
       if (s.id === id) {
@@ -638,6 +666,7 @@ function AppContent() {
                     onInspectSymbol={(sym) => setActiveSymbolKey(sym)}
                     onOpenInfo={() => setIsInfoOpen(true)}
                     currentUser={currentUser}
+                    onRemoveFlag={handleRemoveFlag}
                   />
                 </section>
                 <section className="lg:col-span-3 lg:sticky lg:top-4 self-start">
@@ -664,6 +693,7 @@ function AppContent() {
                   onInspectSymbol={(sym) => setActiveSymbolKey(sym)}
                   onOpenInfo={() => setIsInfoOpen(true)}
                   currentUser={currentUser}
+                  onRemoveFlag={handleRemoveFlag}
                 />
               </section>
             )}

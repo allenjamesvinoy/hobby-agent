@@ -123,11 +123,11 @@ export default function QuestHeader({
             </span>
             <div className="text-left leading-tight">
               <div className="font-bold text-[#242220] flex items-center gap-1">
-                <span>{currentUser?.name || 'Alex Chen'}</span>
+                <span>{currentUser?.name || 'reviewer_1'}</span>
                 <span className="text-[10px] text-[#C35832] font-semibold">⇄</span>
               </div>
               <div className="text-[10px] text-[#6B635A] font-mono truncate max-w-[110px]">
-                @{currentUser?.username || currentUser?.id || 'reviewer'}
+                @{currentUser?.username || currentUser?.id || 'reviewer_1'}
               </div>
             </div>
           </button>

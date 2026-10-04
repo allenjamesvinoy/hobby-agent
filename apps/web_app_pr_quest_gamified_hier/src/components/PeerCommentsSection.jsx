@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { MessageSquare, AlertTriangle, CheckCircle, Send, CornerDownRight, ShieldAlert, User } from 'lucide-react';
+import { MessageSquare, AlertTriangle, CheckCircle, Send, CornerDownRight, ShieldAlert, User, Trash2 } from 'lucide-react';
 
 export default function PeerCommentsSection({
   file,
   currentUser,
   onAddComment,
-  onResolveFlag
+  onResolveFlag,
+  onRemoveFlag
 }) {
   const [replyText, setReplyText] = useState('');
   const [isReplying, setIsReplying] = useState(false);
@@ -55,15 +56,27 @@ export default function PeerCommentsSection({
                   </div>
                 </div>
 
-                {onResolveFlag && (
-                  <button
-                    onClick={() => onResolveFlag(file.id, flag.id)}
-                    className="text-[11px] font-semibold text-[#4F6D56] bg-white border border-[#4F6D56]/30 hover:bg-[#F4F8F5] px-2.5 py-1 rounded-lg transition-colors cursor-pointer shrink-0"
-                    title="Mark flag as addressed"
-                  >
-                    Mark Resolved
-                  </button>
-                )}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {((flag.authorId === currentUser?.id) || (flag.authorName === currentUser?.name)) && onRemoveFlag && (
+                    <button
+                      onClick={() => onRemoveFlag(file.id, flag.id)}
+                      className="text-[11px] font-semibold text-[#C35832] bg-white border border-[#C35832]/30 hover:bg-[#FFF8F6] px-2.5 py-1 rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                      title="Delete your flag on this file"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete My Flag</span>
+                    </button>
+                  )}
+                  {onResolveFlag && (
+                    <button
+                      onClick={() => onResolveFlag(file.id, flag.id)}
+                      className="text-[11px] font-semibold text-[#4F6D56] bg-white border border-[#4F6D56]/30 hover:bg-[#F4F8F5] px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                      title="Mark flag as addressed"
+                    >
+                      Mark Resolved
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           ))}
@@ -118,7 +131,19 @@ export default function PeerCommentsSection({
                       </span>
                     )}
                   </div>
-                  <span className="text-[10px] text-[#6B635A]">{c.timestamp || 'Just now'}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-[#6B635A]">{c.timestamp || 'Just now'}</span>
+                    {(c.authorId === currentUser?.id || c.authorName === currentUser?.name) && onRemoveFlag && (
+                      <button
+                        onClick={() => onRemoveFlag(file.id, c.id)}
+                        className="text-[10px] text-[#C35832] hover:text-[#A84725] hover:underline flex items-center gap-0.5 cursor-pointer"
+                        title="Delete your comment"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>Delete</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="text-[#242220] pl-6 font-mono text-[11px] leading-relaxed whitespace-pre-wrap">
                   {c.text}

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, AlertTriangle, MessageSquare, Star, ChevronDown, ChevronUp, Search, Info, ShieldAlert, Sparkles, X, Send } from 'lucide-react';
+import { Check, AlertTriangle, MessageSquare, Star, ChevronDown, ChevronUp, Search, Info, ShieldAlert, Sparkles, X, Send, Trash2, Flag } from 'lucide-react';
 import PeerCommentsSection from './PeerCommentsSection';
 
 export default function HierarchicalDiffViewer({ 
@@ -13,7 +13,8 @@ export default function HierarchicalDiffViewer({
   level = 1,
   onInspectSymbol,
   onOpenInfo,
-  currentUser
+  currentUser,
+  onRemoveFlag
 }) {
   const [commentInputs, setCommentInputs] = useState({});
   const [expandedFiles, setExpandedFiles] = useState({});
@@ -38,8 +39,20 @@ export default function HierarchicalDiffViewer({
   const sortedFiles = [...filteredFiles].sort((a, b) => b.importance - a.importance);
 
   const handleApprove = (file) => {
-    onUpdateFileStatus(file.id, 'approved');
-    onAddXp(40, `Reviewed & approved ${file.path}`, `review-file-${file.id}`);
+    const isApproved = file.reviewerStatuses?.[currentUser?.id]?.status === 'approved';
+    const nextStatus = isApproved ? 'pending' : 'approved';
+    onUpdateFileStatus(file.id, nextStatus);
+    if (!isApproved) {
+      onAddXp(40, `Reviewed & approved ${file.path}`, `review-file-${file.id}`);
+    }
+  };
+
+  const handleRemoveFlag = (file) => {
+    if (onRemoveFlag) {
+      onRemoveFlag(file.id);
+    } else {
+      onUpdateFileStatus(file.id, 'pending');
+    }
   };
 
   const handleInlineConfirmFlag = (file) => {
@@ -211,30 +224,30 @@ export default function HierarchicalDiffViewer({
 
                 {/* Team Status Tally & User Review Actions */}
                 <div className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                  {/* Per code bit: How many people have approved & how many have flagged */}
+                  {/* Per code bit: Team Status Iconography */}
                   <div className="flex items-center gap-1.5 mr-1">
                     <span 
-                      className={`text-[11px] px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 border transition-colors ${
+                      className={`text-xs px-2 py-1 rounded-lg font-bold flex items-center gap-1 border transition-colors ${
                         approvedReviewers.length > 0 
                           ? 'bg-[#F4F8F5] text-[#4F6D56] border-[#4F6D56]/30' 
-                          : 'bg-[#F9F6F0] text-[#6B635A] border-[#E6E0D5]'
+                          : 'bg-[#F9F6F0] text-[#8C827A] border-[#E6E0D5]'
                       }`}
                       title={approvedReviewers.length > 0 ? `Approved by: ${approvedReviewers.join(', ')}` : '0 approvals'}
                     >
                       <Check className="w-3.5 h-3.5 text-[#4F6D56]" />
-                      <span>{approvedReviewers.length} {approvedReviewers.length === 1 ? 'Approval' : 'Approvals'}</span>
+                      <span>{approvedReviewers.length}</span>
                     </span>
 
                     <span 
-                      className={`text-[11px] px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 border transition-colors ${
+                      className={`text-xs px-2 py-1 rounded-lg font-bold flex items-center gap-1 border transition-colors ${
                         flaggedReviewers.length > 0 
                           ? 'bg-[#FFF8F6] text-[#C35832] border-[#F7D8D0]' 
-                          : 'bg-[#F9F6F0] text-[#6B635A] border-[#E6E0D5]'
+                          : 'bg-[#F9F6F0] text-[#8C827A] border-[#E6E0D5]'
                       }`}
                       title={flaggedReviewers.length > 0 ? `Flagged by: ${flaggedReviewers.join(', ')}` : '0 flags'}
                     >
                       <AlertTriangle className="w-3.5 h-3.5 text-[#C35832]" />
-                      <span>{flaggedReviewers.length} {flaggedReviewers.length === 1 ? 'Flag' : 'Flags'}</span>
+                      <span>{flaggedReviewers.length}</span>
                     </span>
                   </div>
 
@@ -250,28 +263,40 @@ export default function HierarchicalDiffViewer({
                     <Check className="w-3.5 h-3.5" />
                     <span>{currentUserStatus === 'approved' ? '✓ You Approved' : 'Approve'}</span>
                   </button>
-                  <div className="relative">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (flaggingFileId === file.id) {
-                          setFlaggingFileId(null);
-                        } else {
-                          setFlaggingFileId(file.id);
-                          setFlagText('');
-                          setFlagCategory('Security / Correctness');
-                        }
-                      }}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                        currentUserStatus === 'flagged'
-                          ? 'bg-[#C35832] text-white shadow-xs'
-                          : 'bg-white hover:bg-[#FFF8F6] text-[#C35832] border border-[#C35832]/30'
-                      }`}
-                      title="Flag issue with required note for peers"
-                    >
-                      <AlertTriangle className="w-3.5 h-3.5" />
-                      <span>{currentUserStatus === 'flagged' ? '🚩 You Flagged' : 'Flag Issue'}</span>
-                    </button>
+
+                  {currentUserStatus === 'flagged' ? (
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleRemoveFlag(file)}
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 bg-[#C35832] hover:bg-[#A84725] text-white shadow-xs transition-colors cursor-pointer group"
+                        title="Click to remove your flag on this file"
+                      >
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        <span>🚩 You Flagged</span>
+                        <span className="text-[10px] bg-black/20 group-hover:bg-black/35 px-1.5 py-0.5 rounded font-normal flex items-center gap-0.5 ml-0.5">
+                          <Trash2 className="w-3 h-3" /> Delete Flag
+                        </span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (flaggingFileId === file.id) {
+                            setFlaggingFileId(null);
+                          } else {
+                            setFlaggingFileId(file.id);
+                            setFlagText('');
+                            setFlagCategory('Security / Correctness');
+                          }
+                        }}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 bg-white hover:bg-[#FFF8F6] text-[#C35832] border border-[#C35832]/30 transition-colors cursor-pointer"
+                        title="Flag issue for peers"
+                      >
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        <span>Flag Issue</span>
+                      </button>
 
                     {/* Small text window that opens up near the flag section */}
                     {flaggingFileId === file.id && (
@@ -343,8 +368,9 @@ export default function HierarchicalDiffViewer({
                       </div>
                     )}
                   </div>
-                </div>
+                )}
               </div>
+            </div>
 
               {/* Expanded Card Content */}
               {isExpanded && (
@@ -354,6 +380,7 @@ export default function HierarchicalDiffViewer({
                     file={file}
                     currentUser={currentUser}
                     onAddComment={onAddComment}
+                    onRemoveFlag={(fileId, commentId) => onRemoveFlag && onRemoveFlag(fileId, commentId)}
                   />
 
                   {/* Diff Viewer */}
