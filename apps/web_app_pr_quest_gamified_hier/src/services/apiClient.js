@@ -1,30 +1,11 @@
-// PR Quest API Client with dual-mode SQLite backend sync and resilient offline cache
+// PR Quest API Client for multi-user reviews and independent progression
 
 const API_BASE = '/api';
 
-// Fallback preset users if backend is starting or offline
 export const PRESET_USERS = [
-  {
-    id: 'alex_staff',
-    username: 'alex',
-    name: 'Alex Chen',
-    role: 'Staff Infrastructure Engineer',
-    avatar: '👨‍💻'
-  },
-  {
-    id: 'sarah_sec',
-    username: 'sarah',
-    name: 'Sarah Lin',
-    role: 'AppSec Architect',
-    avatar: '👩‍💻'
-  },
-  {
-    id: 'marcus_qa',
-    username: 'marcus',
-    name: 'Marcus Brody',
-    role: 'QA & Reliability Lead',
-    avatar: '🧑‍🔬'
-  }
+  { id: 'alex', username: 'alex', name: 'Alex Chen', avatar: '👨‍💻' },
+  { id: 'sarah', username: 'sarah', name: 'Sarah Lin', avatar: '👩‍💻' },
+  { id: 'marcus', username: 'marcus', name: 'Marcus Brody', avatar: '🧑‍🔬' }
 ];
 
 class ApiClient {
@@ -39,7 +20,7 @@ class ApiClient {
       const saved = localStorage.getItem('pr_quest_user');
       if (saved) return JSON.parse(saved);
     } catch (_) {}
-    return PRESET_USERS[0]; // Default: Alex Chen (Staff Eng)
+    return PRESET_USERS[0];
   }
 
   setCurrentUser(user) {
@@ -77,12 +58,12 @@ class ApiClient {
     return PRESET_USERS;
   }
 
-  async login({ personaId, username, password }) {
+  async login({ personaId, username }) {
     try {
       const res = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ personaId, username, password })
+        body: JSON.stringify({ personaId, username })
       });
       if (res.ok) {
         const data = await res.json();
@@ -90,47 +71,19 @@ class ApiClient {
         this.setCurrentUser(data.user);
         return { success: true, user: data.user };
       }
-      const err = await res.json();
-      return { success: false, error: err.error || 'Login failed' };
-    } catch (e) {
-      // Local fallback for 1-click persona switch
-      if (personaId) {
-        const found = PRESET_USERS.find(p => p.id === personaId);
-        if (found) {
-          this.setCurrentUser(found);
-          return { success: true, user: found };
-        }
-      }
-      return { success: false, error: 'Server unreachable. Running in local mode.' };
-    }
-  }
+    } catch (_) {}
 
-  async register({ username, password, name, role, avatar }) {
-    try {
-      const res = await fetch(`${API_BASE}/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password, name, role, avatar })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        this.setToken(data.token);
-        this.setCurrentUser(data.user);
-        return { success: true, user: data.user };
+    // Local fallback
+    if (personaId) {
+      const found = PRESET_USERS.find(p => p.id === personaId);
+      if (found) {
+        this.setCurrentUser(found);
+        return { success: true, user: found };
       }
-      const err = await res.json();
-      return { success: false, error: err.error || 'Registration failed' };
-    } catch (_) {
-      const localUser = {
-        id: `user_${Date.now()}`,
-        username,
-        name,
-        role: role || 'Code Reviewer',
-        avatar: avatar || '👤'
-      };
-      this.setCurrentUser(localUser);
-      return { success: true, user: localUser };
     }
+    const fallbackUser = { id: username || 'user', username: username || 'user', name: username || 'Reviewer', avatar: '👤' };
+    this.setCurrentUser(fallbackUser);
+    return { success: true, user: fallbackUser };
   }
 
   logout() {
@@ -148,7 +101,6 @@ class ApiClient {
       }
     } catch (_) {}
 
-    // Fallback to cached queries or defaults
     const cached = localStorage.getItem('pr_quest_queries_cache');
     if (cached) {
       try { return JSON.parse(cached); } catch (_) {}
@@ -159,24 +111,24 @@ class ApiClient {
         title: 'PR #101: Session Token Rotation & Salt Validation',
         updated_at: new Date().toISOString(),
         totalFiles: 5,
-        reviewedFiles: 2,
-        flagsCount: 1,
+        totalApprovals: 0,
+        totalFlags: 1,
         verdictsCount: 1
       },
       {
         query_id: 'PR-102',
         title: 'PR #102: Distributed Redis Token Bucket Rate Limiter',
         updated_at: new Date().toISOString(),
-        totalFiles: 1,
-        reviewedFiles: 0,
-        flagsCount: 0,
+        totalFiles: 2,
+        totalApprovals: 0,
+        totalFlags: 0,
         verdictsCount: 0
       }
     ];
   }
 
-  async getQueryState(queryId) {
-    const userId = this.currentUser?.id || 'alex_staff';
+  async getQueryState(queryId, overrideUserId = null) {
+    const userId = overrideUserId || this.currentUser?.id || 'alex';
     try {
       const res = await fetch(`${API_BASE}/state?query=${encodeURIComponent(queryId)}&userId=${encodeURIComponent(userId)}`, {
         headers: { 'x-user-id': userId },
@@ -184,14 +136,12 @@ class ApiClient {
       });
       if (res.ok) {
         const data = await res.json();
-        // Cache locally
-        localStorage.setItem(`pr_quest_query_${queryId}`, JSON.stringify(data));
+        localStorage.setItem(`pr_quest_query_${queryId}_${userId}`, JSON.stringify(data));
         return { success: true, data, isOnline: true };
       }
     } catch (_) {}
 
-    // Fallback: check local storage cache
-    const cached = localStorage.getItem(`pr_quest_query_${queryId}`);
+    const cached = localStorage.getItem(`pr_quest_query_${queryId}_${userId}`);
     if (cached) {
       try {
         return { success: true, data: JSON.parse(cached), isOnline: false };
@@ -201,11 +151,10 @@ class ApiClient {
     return { success: false, error: 'Query not found', isOnline: false };
   }
 
-  async saveQueryState(queryId, title, state, userProgress) {
-    const userId = this.currentUser?.id || 'alex_staff';
-    // Always update local cache immediately
-    const cachePayload = { queryId, title, state, userProgress, updatedAt: new Date().toISOString() };
-    localStorage.setItem(`pr_quest_query_${queryId}`, JSON.stringify(cachePayload));
+  async saveUserProgress(queryId, userProgress) {
+    const userId = this.currentUser?.id || 'alex';
+    const cacheKey = `pr_quest_user_prog_${queryId}_${userId}`;
+    localStorage.setItem(cacheKey, JSON.stringify(userProgress));
 
     try {
       const res = await fetch(`${API_BASE}/state`, {
@@ -214,7 +163,7 @@ class ApiClient {
           'Content-Type': 'application/json',
           'x-user-id': userId
         },
-        body: JSON.stringify({ queryId, title, state, userProgress, userId })
+        body: JSON.stringify({ queryId, userProgress, userId })
       });
       if (res.ok) {
         return { success: true, isOnline: true };
@@ -224,12 +173,37 @@ class ApiClient {
     return { success: true, isOnline: false };
   }
 
+  async saveQueryState(queryId, title, stateObj, userProgress) {
+    return this.saveUserProgress(queryId, userProgress);
+  }
+
+  async updateFileReviewStatus(queryId, fileId, status) {
+    const userId = this.currentUser?.id || 'alex';
+    const userName = this.currentUser?.name || 'Reviewer';
+
+    try {
+      const res = await fetch(`${API_BASE}/file-status`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': userId
+        },
+        body: JSON.stringify({ queryId, fileId, status, userId, userName })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return { success: true, file: data.file, isOnline: true };
+      }
+    } catch (_) {}
+
+    return { success: true, isOnline: false };
+  }
+
   async addComment(queryId, fileId, commentPayload) {
-    const userId = this.currentUser?.id || 'alex_staff';
+    const userId = this.currentUser?.id || 'alex';
     const enrichedComment = {
       authorId: userId,
       authorName: this.currentUser?.name || 'Reviewer',
-      authorRole: this.currentUser?.role || 'Code Reviewer',
       authorAvatar: this.currentUser?.avatar || '👤',
       ...commentPayload
     };
@@ -249,22 +223,19 @@ class ApiClient {
       }
     } catch (_) {}
 
-    // Offline fallback: construct comment locally
     const localComment = {
       id: `c_local_${Date.now()}`,
       ...enrichedComment,
-      timestamp: 'Just now',
-      resolved: false
+      timestamp: 'Just now'
     };
     return { success: true, comment: localComment, isOnline: false };
   }
 
   async submitVerdict(queryId, verdictPayload) {
-    const userId = this.currentUser?.id || 'alex_staff';
+    const userId = this.currentUser?.id || 'alex';
     const payload = {
       userId,
       userName: this.currentUser?.name || 'Reviewer',
-      userRole: this.currentUser?.role || 'Code Reviewer',
       userAvatar: this.currentUser?.avatar || '👤',
       ...verdictPayload
     };

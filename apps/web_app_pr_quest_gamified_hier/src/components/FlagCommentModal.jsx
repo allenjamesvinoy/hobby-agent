@@ -66,10 +66,9 @@ export default function FlagCommentModal({
           <div className="bg-[#F9F6F0] border border-[#E6E0D5] rounded-xl p-3.5 flex items-center gap-3 text-xs text-[#242220]">
             <span className="text-2xl">{currentUser?.avatar || '👨‍💻'}</span>
             <div>
-              <div className="font-semibold text-[#242220]">
-                Reviewing as: <span className="text-[#C35832]">{currentUser?.name || 'Reviewer'}</span>
+              <div className="font-semibold text-xs text-[#242220]">
+                Reviewing as: <span className="text-[#C35832] font-bold">{currentUser?.name || 'Reviewer'}</span>
               </div>
-              <div className="text-[11px] text-[#6B635A]">{currentUser?.role || 'Staff Engineer'}</div>
             </div>
           </div>
 

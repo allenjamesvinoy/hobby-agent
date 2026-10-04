@@ -111,8 +111,8 @@ export default function QuestHeader({
                 <span>{currentUser?.name || 'Alex Chen'}</span>
                 <span className="text-[10px] text-[#C35832] font-semibold">⇄</span>
               </div>
-              <div className="text-[10px] text-[#6B635A] truncate max-w-[130px]">
-                {currentUser?.role || 'Staff Reviewer'}
+              <div className="text-[10px] text-[#6B635A] font-mono truncate max-w-[130px]">
+                @{currentUser?.username || currentUser?.id || 'reviewer'}
               </div>
             </div>
           </button>

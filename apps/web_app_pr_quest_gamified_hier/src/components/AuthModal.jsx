@@ -15,7 +15,6 @@ export default function AuthModal({
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [role, setRole] = useState('Senior Code Reviewer');
   const [error, setError] = useState('');
 
   if (!isOpen) return null;
@@ -32,7 +31,7 @@ export default function AuthModal({
         onClose();
       }
     } else if (tab === 'register') {
-      const res = await onCustomRegister({ username, password, name, role });
+      const res = await onCustomRegister({ username, password, name });
       if (res?.error) {
         setError(res.error);
       } else {
@@ -73,7 +72,7 @@ export default function AuthModal({
               <span className="text-3xl">{currentUser?.avatar || '👨‍💻'}</span>
               <div>
                 <div className="text-xs font-bold text-[#242220]">{currentUser?.name}</div>
-                <div className="text-[11px] text-[#C35832] font-semibold">{currentUser?.role}</div>
+                <div className="text-[11px] text-[#6B635A] font-medium font-mono">@{currentUser?.username || currentUser?.id}</div>
               </div>
             </div>
             <span className="text-[10px] bg-[#4F6D56]/15 text-[#4F6D56] border border-[#4F6D56]/30 px-2 py-0.5 rounded-full font-bold">
@@ -148,7 +147,7 @@ export default function AuthModal({
                           </span>
                         )}
                       </div>
-                      <div className="text-[11px] text-[#6B635A]">{p.role}</div>
+                      <div className="text-[11px] text-[#6B635A] font-mono">@{p.username}</div>
                     </div>
                   </div>
                   {isSelected ? (
@@ -172,33 +171,19 @@ export default function AuthModal({
             )}
 
             {tab === 'register' && (
-              <>
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-[#6B635A] mb-1">
-                    Full Name
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={name}
-                    onChange={e => setName(e.target.value)}
-                    placeholder="e.g. Elena Rostova"
-                    className="w-full text-xs p-2.5 bg-[#F9F6F0] border border-[#E6E0D5] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#C35832]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-[#6B635A] mb-1">
-                    Role Title
-                  </label>
-                  <input
-                    type="text"
-                    value={role}
-                    onChange={e => setRole(e.target.value)}
-                    placeholder="e.g. Security Specialist"
-                    className="w-full text-xs p-2.5 bg-[#F9F6F0] border border-[#E6E0D5] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#C35832]"
-                  />
-                </div>
-              </>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-[#6B635A] mb-1">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  placeholder="e.g. Elena Rostova"
+                  className="w-full text-xs p-2.5 bg-[#F9F6F0] border border-[#E6E0D5] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#C35832]"
+                />
+              </div>
             )}
 
             <div>

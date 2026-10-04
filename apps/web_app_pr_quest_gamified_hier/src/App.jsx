@@ -142,41 +142,34 @@ function AppContent() {
   // --- Query State Loader ---
   const loadQueryState = async (queryId, user = currentUser) => {
     setSyncStatus('syncing');
-    const res = await api.getQueryState(queryId);
+    const targetUserId = user?.id || 'alex';
+    const res = await api.getQueryState(queryId, targetUserId);
 
     if (res.success && res.data) {
-      const { state, title, userProgress } = res.data;
+      const { title, files: sharedFiles, verdicts: sharedVerdicts, userProgress } = res.data;
       setCurrentQueryTitle(title || `PR #${queryId}`);
 
-      if (state) {
-        if (state.jiraTicket) {
-          setJiraTicket({
-            ...initialJiraTicket,
-            ...state.jiraTicket,
-            criteria: Array.isArray(state.jiraTicket.criteria) ? state.jiraTicket.criteria : initialJiraTicket.criteria
-          });
-        }
-        if (state.files && Array.isArray(state.files)) {
-          const safeFiles = state.files.map(f => {
-            const canonical = initialFiles.find(cf => cf.id === f.id || cf.path === f.path);
-            return {
-              ...canonical,
-              ...f,
-              tier: String(f.tier || canonical?.tier || 'Tier 1: Core Logic'),
-              importance: typeof f.importance === 'number' ? f.importance : (canonical?.importance || 80),
-              diffChunks: Array.isArray(f.diffChunks) && f.diffChunks.length > 0 
-                ? f.diffChunks 
-                : (canonical?.diffChunks || []),
-              comments: Array.isArray(f.comments) ? f.comments : []
-            };
-          });
-          setFiles(safeFiles);
-          setActiveFileId(safeFiles[0]?.id || null);
-        }
-        if (state.standards && Array.isArray(state.standards)) setStandards(state.standards);
-        if (state.auditedSymbols && Array.isArray(state.auditedSymbols)) setAuditedSymbols(state.auditedSymbols);
-        if (state.testSuites && Array.isArray(state.testSuites)) setTestSuites(state.testSuites);
-        if (state.verdicts && Array.isArray(state.verdicts)) setVerdicts(state.verdicts);
+      if (sharedFiles && Array.isArray(sharedFiles)) {
+        const safeFiles = sharedFiles.map(f => {
+          const canonical = initialFiles.find(cf => cf.id === f.id || cf.path === f.path);
+          return {
+            ...canonical,
+            ...f,
+            tier: String(f.tier || canonical?.tier || 'Tier 1: Core Logic'),
+            importance: typeof f.importance === 'number' ? f.importance : (canonical?.importance || 80),
+            diffChunks: Array.isArray(f.diffChunks) && f.diffChunks.length > 0 
+              ? f.diffChunks 
+              : (canonical?.diffChunks || []),
+            reviewerStatuses: f.reviewerStatuses || {},
+            comments: Array.isArray(f.comments) ? f.comments : []
+          };
+        });
+        setFiles(safeFiles);
+        setActiveFileId(prev => (prev && safeFiles.some(f => f.id === prev)) ? prev : (safeFiles[0]?.id || null));
+      }
+
+      if (sharedVerdicts && Array.isArray(sharedVerdicts)) {
+        setVerdicts(sharedVerdicts);
       }
 
       if (userProgress) {
@@ -184,11 +177,41 @@ function AppContent() {
         setUnlockedLevel(userProgress.unlockedLevel || 1);
         setXp(userProgress.xp || 0);
         setAwardedActions(userProgress.awardedActions || []);
+
+        if (Array.isArray(userProgress.criteria) && userProgress.criteria.length > 0) {
+          setJiraTicket(prev => ({
+            ...prev,
+            criteria: userProgress.criteria
+          }));
+        } else {
+          setJiraTicket(prev => ({
+            ...prev,
+            criteria: initialJiraTicket.criteria.map(ac => ({ ...ac, completed: false }))
+          }));
+        }
+
+        if (Array.isArray(userProgress.standards) && userProgress.standards.length > 0) {
+          setStandards(userProgress.standards);
+        } else {
+          setStandards(initialStandards.map(s => ({ ...s, completed: false })));
+        }
+
+        if (Array.isArray(userProgress.auditedSymbols)) {
+          setAuditedSymbols(userProgress.auditedSymbols);
+        } else {
+          setAuditedSymbols([]);
+        }
       } else {
         setLevel(1);
         setUnlockedLevel(1);
         setXp(0);
         setAwardedActions([]);
+        setJiraTicket(prev => ({
+          ...prev,
+          criteria: initialJiraTicket.criteria.map(ac => ({ ...ac, completed: false }))
+        }));
+        setStandards(initialStandards.map(s => ({ ...s, completed: false })));
+        setAuditedSymbols([]);
       }
 
       setSyncStatus(res.isOnline ? 'saved' : 'offline');
@@ -203,28 +226,21 @@ function AppContent() {
 
     setSyncStatus('syncing');
     const timer = setTimeout(async () => {
-      const stateObj = {
-        queryId: currentQueryId,
-        jiraTicket,
-        files,
-        references,
-        standards,
-        auditedSymbols,
-        testSuites,
-        verdicts
-      };
       const progressObj = {
         level,
         unlockedLevel,
         xp,
-        awardedActions
+        awardedActions,
+        criteria: jiraTicket.criteria,
+        standards,
+        auditedSymbols
       };
-      const res = await api.saveQueryState(currentQueryId, currentQueryTitle, stateObj, progressObj);
+      const res = await api.saveUserProgress(currentQueryId, progressObj);
       setSyncStatus(res.isOnline ? 'saved' : 'offline');
     }, 600);
 
     return () => clearTimeout(timer);
-  }, [currentQueryId, currentQueryTitle, jiraTicket, files, standards, auditedSymbols, testSuites, verdicts, level, unlockedLevel, xp, awardedActions]);
+  }, [currentQueryId, jiraTicket.criteria, standards, auditedSymbols, level, unlockedLevel, xp, awardedActions]);
 
   // --- Persona Switch Handler ---
   const handleSelectPersona = async (personaId) => {
@@ -232,7 +248,7 @@ function AppContent() {
     if (res.success && res.user) {
       setCurrentUser(res.user);
       setQuestLogs(prev => [
-        { id: Date.now(), text: `👤 Switched reviewer to: ${res.user.name} (${res.user.role})`, timestamp: new Date().toLocaleTimeString() },
+        { id: Date.now(), text: `👤 Switched reviewer to: ${res.user.name} (@${res.user.username})`, timestamp: new Date().toLocaleTimeString() },
         ...prev
       ].slice(0, 5));
       await loadQueryState(currentQueryId, res.user);
@@ -321,11 +337,12 @@ function AppContent() {
   const totalSymbolsCount = symbolKeys.length;
   const isLevel3Complete = totalSymbolsCount > 0 && completedSymbolsCount === totalSymbolsCount;
 
-  const allFilesReviewed = files.length > 0 && files.every(f => f.status !== 'pending');
-  const reviewedCount = files.filter(f => f.status !== 'pending').length;
-  const approvedCount = files.filter(f => f.status === 'approved').length;
-  const flaggedCount = files.filter(f => f.status === 'flagged').length;
-  const pendingCount = files.filter(f => f.status === 'pending').length;
+  const getUserFileStatus = (f) => f.reviewerStatuses?.[currentUser?.id]?.status || 'pending';
+  const allFilesReviewed = files.length > 0 && files.every(f => getUserFileStatus(f) !== 'pending');
+  const reviewedCount = files.filter(f => getUserFileStatus(f) !== 'pending').length;
+  const approvedCount = files.filter(f => getUserFileStatus(f) === 'approved').length;
+  const flaggedCount = files.filter(f => getUserFileStatus(f) === 'flagged').length;
+  const pendingCount = files.filter(f => getUserFileStatus(f) === 'pending').length;
 
   const isVerdictSubmitted = awardedActions.includes('final-verdict-submitted') || verdicts.some(v => v.userId === currentUser.id);
   const isLevel4Complete = allFilesReviewed && isVerdictSubmitted;
@@ -356,7 +373,7 @@ function AppContent() {
   const totalProgressPercent = Math.min(100, Math.round(l1Prog + l2Prog + l3Prog + l4FileProg + l4VerdictProg));
 
   // --- Review Action Handlers ---
-  const handleUpdateFileStatus = (fileId, status) => {
+  const handleUpdateFileStatus = async (fileId, status) => {
     if (status === 'reset') {
       setSelectedSpec('ALL');
       return;
@@ -364,11 +381,17 @@ function AppContent() {
     setFiles(prev => prev.map(f => {
       if (f.id === fileId) {
         const nextStatuses = { ...(f.reviewerStatuses || {}) };
-        nextStatuses[currentUser.id] = { status, timestamp: 'Just now' };
+        nextStatuses[currentUser.id] = { 
+          status, 
+          userName: currentUser.name, 
+          timestamp: 'Just now' 
+        };
         return { ...f, status, reviewerStatuses: nextStatuses };
       }
       return f;
     }));
+
+    await api.updateFileReviewStatus(currentQueryId, fileId, status);
   };
 
   const handleAddComment = async (fileId, commentPayload) => {
@@ -376,7 +399,6 @@ function AppContent() {
       id: `c_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       authorId: currentUser.id,
       authorName: currentUser.name,
-      authorRole: currentUser.role,
       authorAvatar: currentUser.avatar || '👨‍💻',
       type: commentPayload.type || 'note',
       text: commentPayload.text,
@@ -387,18 +409,28 @@ function AppContent() {
     setFiles(prev => prev.map(f => {
       if (f.id === fileId) {
         const nextComments = [...(f.comments || []), enriched];
-        const nextStatus = commentPayload.type === 'flag' ? 'flagged' : f.status;
         const nextStatuses = { ...(f.reviewerStatuses || {}) };
         if (commentPayload.type === 'flag') {
-          nextStatuses[currentUser.id] = { status: 'flagged', timestamp: 'Just now' };
+          nextStatuses[currentUser.id] = { 
+            status: 'flagged', 
+            userName: currentUser.name, 
+            timestamp: 'Just now' 
+          };
         }
-        return { ...f, comments: nextComments, status: nextStatus, reviewerStatuses: nextStatuses };
+        return { 
+          ...f, 
+          comments: nextComments, 
+          status: commentPayload.type === 'flag' ? 'flagged' : f.status, 
+          reviewerStatuses: nextStatuses 
+        };
       }
       return f;
     }));
 
-    // Post to API client
-    api.addComment(currentQueryId, fileId, enriched);
+    await api.addComment(currentQueryId, fileId, enriched);
+    if (commentPayload.type === 'flag') {
+      await api.updateFileReviewStatus(currentQueryId, fileId, 'flagged');
+    }
   };
 
   const handleToggleStandard = (id) => {
@@ -433,8 +465,12 @@ function AppContent() {
 
   const handleSubmitFinalVerdict = async () => {
     if (pendingCount > 0) {
-      if (window.confirm(`There are still ${pendingCount} pending code file(s). Would you like to approve all remaining files and submit your verdict?`)) {
-        setFiles(prev => prev.map(f => f.status === 'pending' ? { ...f, status: 'approved' } : f));
+      if (window.confirm(`You still have ${pendingCount} pending code file(s) in your review. Would you like to approve all remaining files and submit your verdict?`)) {
+        for (const f of files) {
+          if (getUserFileStatus(f) === 'pending') {
+            await handleUpdateFileStatus(f.id, 'approved');
+          }
+        }
       } else {
         return;
       }
@@ -443,7 +479,6 @@ function AppContent() {
     const verdictEntry = {
       userId: currentUser.id,
       userName: currentUser.name,
-      userRole: currentUser.role,
       userAvatar: currentUser.avatar || '👨‍💻',
       verdict: userVerdictType,
       notes: userVerdictNotes || (userVerdictType === 'approved' ? 'All acceptance criteria and code changes approved.' : 'Changes requested by reviewer.'),
@@ -460,7 +495,7 @@ function AppContent() {
       return [...prev, verdictEntry];
     });
 
-    api.submitVerdict(currentQueryId, verdictEntry);
+    await api.submitVerdict(currentQueryId, verdictEntry);
     handleAddXp(100, `Submitted Final Review Verdict as ${currentUser.name}`, "final-verdict-submitted");
 
     setQuestLogs(prev => [
@@ -471,31 +506,30 @@ function AppContent() {
     setIsVerdictOpen(false);
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
     if (window.confirm("Are you sure you want to reset your review quest progress for this query?")) {
       setLevel(1);
       setUnlockedLevel(1);
       setXp(0);
       setAwardedActions([]);
-      setJiraTicket(initialJiraTicket);
-      setFiles(initialFiles);
-      setReferences(initialReferences);
-      setArchitectureText(defaultArchitecture);
-      setStandards(initialStandards);
+      const freshCriteria = initialJiraTicket.criteria.map(ac => ({ ...ac, completed: false }));
+      const freshStandards = initialStandards.map(s => ({ ...s, completed: false }));
+      setJiraTicket(prev => ({ ...prev, criteria: freshCriteria }));
+      setStandards(freshStandards);
       setTestSuites(initialTestSuites);
       setActiveSymbolKey("rotateSessionToken");
       setSelectedSpec('ALL');
-      setActiveFileId(initialFiles[0]?.id || null);
       setAuditedSymbols([]);
-      setVerdicts([]);
       setQuestLogs([]);
-      api.saveQueryState(currentQueryId, currentQueryTitle, {
-        jiraTicket: initialJiraTicket,
-        files: initialFiles,
-        standards: initialStandards,
-        testSuites: initialTestSuites,
-        verdicts: []
-      }, { level: 1, unlockedLevel: 1, xp: 0, awardedActions: [] });
+      await api.saveUserProgress(currentQueryId, { 
+        level: 1, 
+        unlockedLevel: 1, 
+        xp: 0, 
+        awardedActions: [],
+        criteria: freshCriteria,
+        standards: freshStandards,
+        auditedSymbols: []
+      });
     }
   };
 
@@ -876,8 +910,8 @@ function AppContent() {
                             <span className="text-xl">{v.userAvatar || '👤'}</span>
                             <div>
                               <span className="font-bold text-[#242220]">{v.userName}</span>
-                              <span className="text-[10px] text-[#6B635A] ml-1.5 bg-[#F1ECE4] px-1.5 py-0.2 rounded font-medium">
-                                {v.userRole}
+                              <span className="text-[10px] text-[#6B635A] ml-1.5 bg-[#F1ECE4] px-1.5 py-0.2 rounded font-medium font-mono">
+                                @{v.userId || 'reviewer'}
                               </span>
                             </div>
                           </div>
@@ -908,7 +942,7 @@ function AppContent() {
                   <label className="text-xs font-bold uppercase tracking-wider text-[#6B635A]">
                     Your Verdict as: <strong className="text-[#242220]">{currentUser.name}</strong>
                   </label>
-                  <span className="text-[11px] text-[#6B635A] font-semibold">{currentUser.role}</span>
+                  <span className="text-[11px] text-[#6B635A] font-mono">@{currentUser.username || currentUser.id}</span>
                 </div>
 
                 <div className="grid grid-cols-3 gap-2">

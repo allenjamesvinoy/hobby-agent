@@ -45,9 +45,6 @@ export default function PeerCommentsSection({
                         <ShieldAlert className="w-3.5 h-3.5" />
                         FLAGGED BY {flag.authorName?.toUpperCase() || 'PEER REVIEWER'}
                       </span>
-                      <span className="text-[10px] bg-[#F7D8D0] text-[#8C3416] px-2 py-0.5 rounded-full font-semibold">
-                        {flag.authorRole || 'Reviewer'}
-                      </span>
                       <span className="text-[11px] text-[#6B635A]">
                         {flag.timestamp || 'Recently'}
                       </span>
@@ -110,9 +107,6 @@ export default function PeerCommentsSection({
                   <div className="flex items-center gap-2">
                     <span className="text-base">{c.authorAvatar || '👤'}</span>
                     <span className="font-bold text-[#242220]">{c.authorName || 'Reviewer'}</span>
-                    <span className="text-[10px] text-[#6B635A] bg-white px-1.5 py-0.5 rounded border border-[#E6E0D5]">
-                      {c.authorRole || 'Peer'}
-                    </span>
                     {c.type === 'flag' && (
                       <span className="text-[10px] bg-[#C35832] text-white px-1.5 py-0.2 rounded font-bold">
                         FLAG

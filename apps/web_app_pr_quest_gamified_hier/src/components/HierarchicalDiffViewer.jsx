@@ -39,17 +39,6 @@ export default function HierarchicalDiffViewer({
   const handleApprove = (file) => {
     onUpdateFileStatus(file.id, 'approved');
     onAddXp(40, `Reviewed & approved ${file.path}`, `review-file-${file.id}`);
-
-    // Add approval record
-    onAddComment(file.id, {
-      authorId: currentUser?.id || 'alex_staff',
-      authorName: currentUser?.name || 'Reviewer',
-      authorRole: currentUser?.role || 'Code Reviewer',
-      authorAvatar: currentUser?.avatar || '👨‍💻',
-      type: 'approval',
-      text: `Approved by ${currentUser?.name || 'Reviewer'}.`,
-      timestamp: 'Just now'
-    });
   };
 
   const handleOpenFlagModal = (file) => {
@@ -60,12 +49,11 @@ export default function HierarchicalDiffViewer({
     if (!flaggingFile) return;
 
     onAddComment(flaggingFile.id, {
-      authorId: currentUser?.id || 'alex_staff',
+      authorId: currentUser?.id || 'alex',
       authorName: currentUser?.name || 'Reviewer',
-      authorRole: currentUser?.role || 'Code Reviewer',
       authorAvatar: currentUser?.avatar || '👨‍💻',
       type: 'flag',
-      text: `[${commentData.tag}] ${commentData.text}`,
+      text: commentData.text,
       timestamp: 'Just now'
     });
 
@@ -81,9 +69,8 @@ export default function HierarchicalDiffViewer({
     onAddComment(fileId, {
       id: Date.now(),
       line: lineNum,
-      authorId: currentUser?.id || 'alex_staff',
+      authorId: currentUser?.id || 'alex',
       authorName: currentUser?.name || 'Reviewer',
-      authorRole: currentUser?.role || 'Code Reviewer',
       authorAvatar: currentUser?.avatar || '👨‍💻',
       author: currentUser?.name || 'Reviewer (You)',
       type: 'note',
@@ -169,8 +156,10 @@ export default function HierarchicalDiffViewer({
             tierBadgeColor = "bg-[#F4F8F5] text-[#4F6D56] border-[#4F6D56]/20";
           }
 
-          const fileFlags = (file.comments || []).filter(c => c.type === 'flag');
-          const latestFlag = fileFlags[fileFlags.length - 1];
+          const reviewerEntries = Object.entries(file.reviewerStatuses || {});
+          const approvedReviewers = reviewerEntries.filter(([_, s]) => s.status === 'approved').map(([_, s]) => s.userName);
+          const flaggedReviewers = reviewerEntries.filter(([_, s]) => s.status === 'flagged').map(([_, s]) => s.userName);
+          const currentUserStatus = file.reviewerStatuses?.[currentUser?.id]?.status || 'pending';
 
           return (
             <div 
@@ -195,10 +184,10 @@ export default function HierarchicalDiffViewer({
                       <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${tierBadgeColor}`}>
                         {file.tier}
                       </span>
-                      {fileFlags.length > 0 && (
+                      {flaggedReviewers.length > 0 && (
                         <span className="text-[10px] bg-[#FFF8F6] text-[#C35832] border border-[#F7D8D0] px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
                           <ShieldAlert className="w-3 h-3" />
-                          <span>Flagged by {latestFlag.authorName || 'Peer'}</span>
+                          <span>Flagged by {flaggedReviewers.join(', ')}</span>
                         </span>
                       )}
                     </div>
@@ -221,30 +210,58 @@ export default function HierarchicalDiffViewer({
                   </div>
                 </div>
 
-                {/* File Review Actions */}
-                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                {/* Team Status Tally & User Review Actions */}
+                <div className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                  {/* Per code bit: How many people have approved & how many have flagged */}
+                  <div className="flex items-center gap-1.5 mr-1">
+                    <span 
+                      className={`text-[11px] px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 border transition-colors ${
+                        approvedReviewers.length > 0 
+                          ? 'bg-[#F4F8F5] text-[#4F6D56] border-[#4F6D56]/30' 
+                          : 'bg-[#F9F6F0] text-[#6B635A] border-[#E6E0D5]'
+                      }`}
+                      title={approvedReviewers.length > 0 ? `Approved by: ${approvedReviewers.join(', ')}` : '0 approvals'}
+                    >
+                      <Check className="w-3.5 h-3.5 text-[#4F6D56]" />
+                      <span>{approvedReviewers.length} {approvedReviewers.length === 1 ? 'Approval' : 'Approvals'}</span>
+                    </span>
+
+                    <span 
+                      className={`text-[11px] px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 border transition-colors ${
+                        flaggedReviewers.length > 0 
+                          ? 'bg-[#FFF8F6] text-[#C35832] border-[#F7D8D0]' 
+                          : 'bg-[#F9F6F0] text-[#6B635A] border-[#E6E0D5]'
+                      }`}
+                      title={flaggedReviewers.length > 0 ? `Flagged by: ${flaggedReviewers.join(', ')}` : '0 flags'}
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5 text-[#C35832]" />
+                      <span>{flaggedReviewers.length} {flaggedReviewers.length === 1 ? 'Flag' : 'Flags'}</span>
+                    </span>
+                  </div>
+
+                  {/* Current User Action Buttons */}
                   <button
                     onClick={() => handleApprove(file)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                      file.status === 'approved'
+                      currentUserStatus === 'approved'
                         ? 'bg-[#4F6D56] text-white shadow-xs'
-                        : 'bg-[#F4F8F5] text-[#4F6D56] hover:bg-[#4F6D56] hover:text-white border border-[#4F6D56]/30'
+                        : 'bg-white hover:bg-[#F4F8F5] text-[#4F6D56] border border-[#4F6D56]/30'
                     }`}
                   >
                     <Check className="w-3.5 h-3.5" />
-                    <span>Approve</span>
+                    <span>{currentUserStatus === 'approved' ? '✓ You Approved' : 'Approve'}</span>
                   </button>
                   <button
                     onClick={() => handleOpenFlagModal(file)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                      file.status === 'flagged'
+                      currentUserStatus === 'flagged'
                         ? 'bg-[#C35832] text-white shadow-xs'
-                        : 'bg-[#FBEFEF] text-[#C35832] hover:bg-[#C35832] hover:text-white border border-[#C35832]/30'
+                        : 'bg-white hover:bg-[#FFF8F6] text-[#C35832] border border-[#C35832]/30'
                     }`}
                     title="Flag issue (requires explanation comment for peers)"
                   >
                     <AlertTriangle className="w-3.5 h-3.5" />
-                    <span>Flag Issue</span>
+                    <span>{currentUserStatus === 'flagged' ? '🚩 You Flagged' : 'Flag Issue'}</span>
                   </button>
                 </div>
               </div>

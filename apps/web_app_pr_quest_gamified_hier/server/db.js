@@ -20,32 +20,11 @@ if (!fs.existsSync(DATA_DIR)) {
 
 const DB_PATH = path.join(DATA_DIR, 'pr_quest.db');
 
-// Built-in reviewer personas for instant 1-click access
+// Simple reviewer users without complex roles
 export const PRESET_USERS = [
-  {
-    id: 'alex_staff',
-    username: 'alex',
-    password_hash: 'demo123',
-    name: 'Alex Chen',
-    role: 'Staff Infrastructure Engineer',
-    avatar: '👨‍💻'
-  },
-  {
-    id: 'sarah_sec',
-    username: 'sarah',
-    password_hash: 'demo123',
-    name: 'Sarah Lin',
-    role: 'AppSec Architect',
-    avatar: '👩‍💻'
-  },
-  {
-    id: 'marcus_qa',
-    username: 'marcus',
-    password_hash: 'demo123',
-    name: 'Marcus Brody',
-    role: 'QA & Reliability Lead',
-    avatar: '🧑‍🔬'
-  }
+  { id: 'alex', username: 'alex', name: 'Alex Chen', avatar: '👨‍💻' },
+  { id: 'sarah', username: 'sarah', name: 'Sarah Lin', avatar: '👩‍💻' },
+  { id: 'marcus', username: 'marcus', name: 'Marcus Brody', avatar: '🧑‍🔬' }
 ];
 
 class DatabaseManager {
@@ -79,9 +58,7 @@ class DatabaseManager {
       CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         username TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
         name TEXT NOT NULL,
-        role TEXT NOT NULL DEFAULT 'Code Reviewer',
         avatar TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
@@ -89,7 +66,8 @@ class DatabaseManager {
       CREATE TABLE IF NOT EXISTS review_queries (
         query_id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
-        state_json TEXT NOT NULL,
+        files_json TEXT NOT NULL,
+        verdicts_json TEXT NOT NULL DEFAULT '[]',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
@@ -102,6 +80,9 @@ class DatabaseManager {
         unlocked_level INTEGER DEFAULT 1,
         xp INTEGER DEFAULT 0,
         awarded_actions_json TEXT DEFAULT '[]',
+        criteria_json TEXT NOT NULL,
+        standards_json TEXT NOT NULL,
+        symbols_json TEXT NOT NULL DEFAULT '[]',
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(user_id, query_id)
       );
@@ -109,42 +90,80 @@ class DatabaseManager {
   }
 
   seedInitialData() {
-    // Seed Preset Users
+    // Seed Preset Users (no roles)
     for (const u of PRESET_USERS) {
       const existing = this.getUserById(u.id);
       if (!existing) {
         const stmt = this.sqlite.prepare(`
-          INSERT INTO users (id, username, password_hash, name, role, avatar)
-          VALUES (?, ?, ?, ?, ?, ?)
+          INSERT INTO users (id, username, name, avatar)
+          VALUES (?, ?, ?, ?)
         `);
-        stmt.run(u.id, u.username, u.password_hash, u.name, u.role, u.avatar);
+        stmt.run(u.id, u.username, u.name, u.avatar);
       }
     }
 
-    // Seed PR-101 if not existing
-    const existingPr101 = this.getQueryState('PR-101');
+    // Seed PR-101
+    const existingPr101 = this.getQuery(null, 'PR-101');
     if (!existingPr101) {
-      const pr101State = createInitialPr101State();
-      this.saveQueryState('PR-101', 'PR #101: Session Token Rotation & Salt Validation', pr101State);
-      
-      // Seed Alex Chen's initial user progress on PR-101
-      this.saveUserProgress('alex_staff', 'PR-101', {
-        level: 2,
-        unlockedLevel: 2,
-        xp: 150,
-        awardedActions: ['ac-jira-1', 'ac-jira-2', 'unlock-level-2']
+      // Seed files with 1 initial flag from Alex Chen on file-1 to demonstrate peer reviews
+      const freshFiles = JSON.parse(JSON.stringify(initialFiles)).map((f, idx) => {
+        if (idx === 0) {
+          return {
+            ...f,
+            reviewerStatuses: {
+              alex: { status: 'flagged', userName: 'Alex Chen', timestamp: '10 mins ago' }
+            },
+            comments: [
+              {
+                id: 'c-alex-1',
+                line: 8,
+                authorId: 'alex',
+                authorName: 'Alex Chen',
+                authorAvatar: '👨‍💻',
+                type: 'flag',
+                text: 'Critical: The rotateSessionToken() routine must validate that the salt meets minimum 256-bit entropy standards before writing to session state.',
+                timestamp: '10 mins ago'
+              }
+            ]
+          };
+        }
+        return {
+          ...f,
+          reviewerStatuses: {},
+          comments: []
+        };
       });
+
+      const initialVerdicts = [
+        {
+          userId: 'alex',
+          userName: 'Alex Chen',
+          userAvatar: '👨‍💻',
+          verdict: 'changes_requested',
+          notes: 'Requested changes on SessionManager.js: must enforce 256-bit salt entropy validation before persisting tokens.',
+          timestamp: '10 mins ago'
+        }
+      ];
+
+      this.saveQuery('PR-101', 'PR #101: Session Token Rotation & Salt Validation', freshFiles, initialVerdicts);
     }
 
     // Seed PR-102
-    const existingPr102 = this.getQueryState('PR-102');
+    const existingPr102 = this.getQuery(null, 'PR-102');
     if (!existingPr102) {
-      const pr102State = createInitialPr102State();
-      this.saveQueryState('PR-102', 'PR #102: Distributed Redis Token Bucket Rate Limiter', pr102State);
+      const pr102Files = JSON.parse(JSON.stringify(initialFiles)).slice(0, 2).map((f, i) => ({
+        ...f,
+        id: `f-102-${i+1}`,
+        path: i === 0 ? "src/limiter/tokenBucket.ts" : "src/limiter/redisClient.ts",
+        specTag: i === 0 ? "AC-102-1" : "AC-102-2",
+        reviewerStatuses: {},
+        comments: []
+      }));
+      this.saveQuery('PR-102', 'PR #102: Distributed Redis Token Bucket Rate Limiter', pr102Files, []);
     }
   }
 
-  // --- Fallback JSON store for zero-dependency portability ---
+  // --- Fallback JSON storage ---
   initJsonFallback() {
     this.fallbackFile = path.join(DATA_DIR, 'pr_quest_store.json');
     if (fs.existsSync(this.fallbackFile)) {
@@ -156,7 +175,6 @@ class DatabaseManager {
       }
     }
 
-    // Seed preset users
     for (const u of PRESET_USERS) {
       if (!this.fallbackStore.users[u.id]) {
         this.fallbackStore.users[u.id] = { ...u, created_at: new Date().toISOString() };
@@ -164,19 +182,36 @@ class DatabaseManager {
     }
 
     if (!this.fallbackStore.review_queries['PR-101']) {
+      const freshFiles = JSON.parse(JSON.stringify(initialFiles));
+      freshFiles[0].reviewerStatuses = {
+        alex: { status: 'flagged', userName: 'Alex Chen', timestamp: '10 mins ago' }
+      };
+      freshFiles[0].comments = [
+        {
+          id: 'c-alex-1',
+          authorId: 'alex',
+          authorName: 'Alex Chen',
+          authorAvatar: '👨‍💻',
+          type: 'flag',
+          text: 'Critical: The rotateSessionToken() routine must validate that the salt meets minimum 256-bit entropy standards before writing to session state.',
+          timestamp: '10 mins ago'
+        }
+      ];
+
       this.fallbackStore.review_queries['PR-101'] = {
         query_id: 'PR-101',
         title: 'PR #101: Session Token Rotation & Salt Validation',
-        state_json: JSON.stringify(createInitialPr101State()),
-        updated_at: new Date().toISOString()
-      };
-    }
-
-    if (!this.fallbackStore.review_queries['PR-102']) {
-      this.fallbackStore.review_queries['PR-102'] = {
-        query_id: 'PR-102',
-        title: 'PR #102: Distributed Redis Token Bucket Rate Limiter',
-        state_json: JSON.stringify(createInitialPr102State()),
+        files_json: JSON.stringify(freshFiles),
+        verdicts_json: JSON.stringify([
+          {
+            userId: 'alex',
+            userName: 'Alex Chen',
+            userAvatar: '👨‍💻',
+            verdict: 'changes_requested',
+            notes: 'Requested changes on SessionManager.js: must enforce 256-bit salt entropy validation before persisting tokens.',
+            timestamp: '10 mins ago'
+          }
+        ]),
         updated_at: new Date().toISOString()
       };
     }
@@ -190,7 +225,7 @@ class DatabaseManager {
     }
   }
 
-  // --- User Operations ---
+  // --- Users Operations ---
   getUserById(id) {
     if (this.useMemoryFallback) {
       return this.fallbackStore.users[id] || null;
@@ -207,112 +242,130 @@ class DatabaseManager {
     return stmt.get(username) || null;
   }
 
-  createUser(id, username, password, name, role = 'Code Reviewer', avatar = '👤') {
+  createUser(id, username, name, avatar = '👤') {
     if (this.useMemoryFallback) {
-      const user = { id, username, password_hash: password, name, role, avatar, created_at: new Date().toISOString() };
+      const user = { id, username, name, avatar, created_at: new Date().toISOString() };
       this.fallbackStore.users[id] = user;
       this.persistFallback();
       return user;
     }
     const stmt = this.sqlite.prepare(`
-      INSERT INTO users (id, username, password_hash, name, role, avatar)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO users (id, username, name, avatar)
+      VALUES (?, ?, ?, ?)
     `);
-    stmt.run(id, username, password, name, role, avatar);
+    stmt.run(id, username, name, avatar);
     return this.getUserById(id);
   }
 
-  // --- Review Queries Operations ---
+  // --- Review Queries (Shared PR Files & Verdicts) ---
   listQueries() {
     if (this.useMemoryFallback) {
       return Object.values(this.fallbackStore.review_queries).map(q => {
-        let state = {};
-        try { state = JSON.parse(q.state_json); } catch (_) {}
-        const totalFiles = state.files ? state.files.length : 0;
-        const reviewedFiles = state.files ? state.files.filter(f => f.status !== 'pending').length : 0;
-        const flagsCount = state.files ? state.files.filter(f => f.status === 'flagged').length : 0;
-        const verdictsCount = state.verdicts ? state.verdicts.length : 0;
+        let files = [];
+        let verdicts = [];
+        try { files = JSON.parse(q.files_json); } catch (_) {}
+        try { verdicts = JSON.parse(q.verdicts_json); } catch (_) {}
+
+        let totalApprovals = 0;
+        let totalFlags = 0;
+        for (const f of files) {
+          const statuses = Object.values(f.reviewerStatuses || {});
+          if (statuses.some(s => s.status === 'approved')) totalApprovals++;
+          if (statuses.some(s => s.status === 'flagged')) totalFlags++;
+        }
+
         return {
           query_id: q.query_id,
           title: q.title,
           updated_at: q.updated_at,
-          totalFiles,
-          reviewedFiles,
-          flagsCount,
-          verdictsCount
+          totalFiles: files.length,
+          totalApprovals,
+          totalFlags,
+          verdictsCount: verdicts.length
         };
       }).sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
     }
 
     const rows = this.sqlite.prepare(`
-      SELECT query_id, title, state_json, updated_at
+      SELECT query_id, title, files_json, verdicts_json, updated_at
       FROM review_queries
       ORDER BY updated_at DESC
     `).all();
 
     return rows.map(r => {
-      let state = {};
-      try { state = JSON.parse(r.state_json); } catch (_) {}
-      const totalFiles = state.files ? state.files.length : 0;
-      const reviewedFiles = state.files ? state.files.filter(f => f.status !== 'pending').length : 0;
-      const flagsCount = state.files ? state.files.filter(f => f.status === 'flagged').length : 0;
-      const verdictsCount = state.verdicts ? state.verdicts.length : 0;
+      let files = [];
+      let verdicts = [];
+      try { files = JSON.parse(r.files_json); } catch (_) {}
+      try { verdicts = JSON.parse(r.verdicts_json); } catch (_) {}
+
+      let totalApprovals = 0;
+      let totalFlags = 0;
+      for (const f of files) {
+        const statuses = Object.values(f.reviewerStatuses || {});
+        if (statuses.some(s => s.status === 'approved')) totalApprovals++;
+        if (statuses.some(s => s.status === 'flagged')) totalFlags++;
+      }
+
       return {
         query_id: r.query_id,
         title: r.title,
         updated_at: r.updated_at,
-        totalFiles,
-        reviewedFiles,
-        flagsCount,
-        verdictsCount
+        totalFiles: files.length,
+        totalApprovals,
+        totalFlags,
+        verdictsCount: verdicts.length
       };
     });
   }
 
-  getQueryState(queryId) {
+  getQuery(userId, queryId) {
     if (this.useMemoryFallback) {
       const q = this.fallbackStore.review_queries[queryId];
       if (!q) return null;
-      try {
-        return {
-          query_id: q.query_id,
-          title: q.title,
-          state: JSON.parse(q.state_json),
-          updated_at: q.updated_at
-        };
-      } catch (_) {
-        return null;
-      }
+      let files = [];
+      let verdicts = [];
+      try { files = JSON.parse(q.files_json); } catch (_) {}
+      try { verdicts = JSON.parse(q.verdicts_json); } catch (_) {}
+      return {
+        queryId: q.query_id,
+        title: q.title,
+        files,
+        verdicts,
+        updatedAt: q.updated_at
+      };
     }
 
     const row = this.sqlite.prepare(`
-      SELECT query_id, title, state_json, updated_at
+      SELECT query_id, title, files_json, verdicts_json, updated_at
       FROM review_queries
       WHERE query_id = ?
     `).get(queryId);
 
     if (!row) return null;
-    try {
-      return {
-        query_id: row.query_id,
-        title: row.title,
-        state: JSON.parse(row.state_json),
-        updated_at: row.updated_at
-      };
-    } catch (_) {
-      return null;
-    }
+    let files = [];
+    let verdicts = [];
+    try { files = JSON.parse(row.files_json); } catch (_) {}
+    try { verdicts = JSON.parse(row.verdicts_json); } catch (_) {}
+    return {
+      queryId: row.query_id,
+      title: row.title,
+      files,
+      verdicts,
+      updatedAt: row.updated_at
+    };
   }
 
-  saveQueryState(queryId, title, stateObj) {
-    const jsonStr = JSON.stringify(stateObj);
+  saveQuery(queryId, title, files, verdicts) {
+    const filesJson = JSON.stringify(files);
+    const verdictsJson = JSON.stringify(verdicts || []);
     const now = new Date().toISOString();
 
     if (this.useMemoryFallback) {
       this.fallbackStore.review_queries[queryId] = {
         query_id: queryId,
         title: title || `Query ${queryId}`,
-        state_json: jsonStr,
+        files_json: filesJson,
+        verdicts_json: verdictsJson,
         updated_at: now
       };
       this.persistFallback();
@@ -320,45 +373,92 @@ class DatabaseManager {
     }
 
     const stmt = this.sqlite.prepare(`
-      INSERT INTO review_queries (query_id, title, state_json, updated_at)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO review_queries (query_id, title, files_json, verdicts_json, updated_at)
+      VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(query_id) DO UPDATE SET
         title = excluded.title,
-        state_json = excluded.state_json,
+        files_json = excluded.files_json,
+        verdicts_json = excluded.verdicts_json,
         updated_at = excluded.updated_at
     `);
-    stmt.run(queryId, title || `Query ${queryId}`, jsonStr, now);
+    stmt.run(queryId, title || `Query ${queryId}`, filesJson, verdictsJson, now);
     return true;
   }
 
-  // --- Individual User Progress Operations ---
+  // --- Independent User Progress (Unique per User!) ---
   getUserProgress(userId, queryId) {
     const key = `${userId}:${queryId}`;
     if (this.useMemoryFallback) {
       const p = this.fallbackStore.user_progress[key];
-      if (!p) return null;
+      if (!p) {
+        return this.createDefaultUserProgress(userId, queryId);
+      }
       return {
-        ...p,
-        awardedActions: JSON.parse(p.awarded_actions_json || '[]')
+        userId: p.user_id,
+        queryId: p.query_id,
+        level: p.level || 1,
+        unlockedLevel: p.unlocked_level || 1,
+        xp: p.xp || 0,
+        awardedActions: JSON.parse(p.awarded_actions_json || '[]'),
+        criteria: JSON.parse(p.criteria_json || '[]'),
+        standards: JSON.parse(p.standards_json || '[]'),
+        auditedSymbols: JSON.parse(p.symbols_json || '[]'),
+        updatedAt: p.updated_at
       };
     }
 
     const row = this.sqlite.prepare(`
-      SELECT user_id, query_id, level, unlocked_level, xp, awarded_actions_json, updated_at
+      SELECT user_id, query_id, level, unlocked_level, xp, awarded_actions_json, criteria_json, standards_json, symbols_json, updated_at
       FROM user_progress
       WHERE user_id = ? AND query_id = ?
     `).get(userId, queryId);
 
-    if (!row) return null;
+    if (!row) {
+      return this.createDefaultUserProgress(userId, queryId);
+    }
+
     return {
       userId: row.user_id,
       queryId: row.query_id,
-      level: row.level,
-      unlockedLevel: row.unlocked_level,
-      xp: row.xp,
+      level: row.level || 1,
+      unlockedLevel: row.unlocked_level || 1,
+      xp: row.xp || 0,
       awardedActions: JSON.parse(row.awarded_actions_json || '[]'),
+      criteria: JSON.parse(row.criteria_json || '[]'),
+      standards: JSON.parse(row.standards_json || '[]'),
+      auditedSymbols: JSON.parse(row.symbols_json || '[]'),
       updatedAt: row.updated_at
     };
+  }
+
+  createDefaultUserProgress(userId, queryId) {
+    // All ACs start unchecked (completed: false), Level 1, 0 XP!
+    const defaultCriteria = initialJiraTicket.criteria.map(ac => ({
+      id: ac.id,
+      text: ac.text,
+      completed: false
+    }));
+
+    const defaultStandards = architectureStandards.map(s => ({
+      ...s,
+      completed: false
+    }));
+
+    const progress = {
+      userId,
+      queryId,
+      level: 1,
+      unlockedLevel: 1,
+      xp: 0,
+      awardedActions: [],
+      criteria: defaultCriteria,
+      standards: defaultStandards,
+      auditedSymbols: [],
+      updatedAt: new Date().toISOString()
+    };
+
+    this.saveUserProgress(userId, queryId, progress);
+    return progress;
   }
 
   saveUserProgress(userId, queryId, progress) {
@@ -367,6 +467,9 @@ class DatabaseManager {
     const unlockedLevel = progress.unlockedLevel || 1;
     const xp = progress.xp || 0;
     const awardedJson = JSON.stringify(progress.awardedActions || []);
+    const criteriaJson = JSON.stringify(progress.criteria || []);
+    const standardsJson = JSON.stringify(progress.standards || []);
+    const symbolsJson = JSON.stringify(progress.auditedSymbols || []);
     const now = new Date().toISOString();
 
     if (this.useMemoryFallback) {
@@ -378,6 +481,9 @@ class DatabaseManager {
         unlocked_level: unlockedLevel,
         xp,
         awarded_actions_json: awardedJson,
+        criteria_json: criteriaJson,
+        standards_json: standardsJson,
+        symbols_json: symbolsJson,
         updated_at: now
       };
       this.persistFallback();
@@ -385,96 +491,100 @@ class DatabaseManager {
     }
 
     const stmt = this.sqlite.prepare(`
-      INSERT INTO user_progress (id, user_id, query_id, level, unlocked_level, xp, awarded_actions_json, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO user_progress (id, user_id, query_id, level, unlocked_level, xp, awarded_actions_json, criteria_json, standards_json, symbols_json, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         level = excluded.level,
         unlocked_level = excluded.unlocked_level,
         xp = excluded.xp,
         awarded_actions_json = excluded.awarded_actions_json,
+        criteria_json = excluded.criteria_json,
+        standards_json = excluded.standards_json,
+        symbols_json = excluded.symbols_json,
         updated_at = excluded.updated_at
     `);
-    stmt.run(key, userId, queryId, level, unlockedLevel, xp, awardedJson, now);
+    stmt.run(key, userId, queryId, level, unlockedLevel, xp, awardedJson, criteriaJson, standardsJson, symbolsJson, now);
     return true;
   }
-}
 
-function createInitialPr101State() {
-  const seededFiles = JSON.parse(JSON.stringify(initialFiles));
-  if (seededFiles[0]) {
-    seededFiles[0].status = 'flagged';
-    seededFiles[0].reviewerStatuses = {
-      alex_staff: { status: 'flagged', timestamp: '15 mins ago' }
+  // --- Per-File Approval / Flag by User ---
+  updateFileReviewStatus(queryId, fileId, userId, userName, status) {
+    const query = this.getQuery(userId, queryId);
+    if (!query) return null;
+
+    const file = query.files.find(f => f.id === fileId);
+    if (!file) return null;
+
+    file.reviewerStatuses = file.reviewerStatuses || {};
+    file.reviewerStatuses[userId] = {
+      status, // 'approved' | 'flagged' | 'pending'
+      userName: userName || 'Reviewer',
+      timestamp: 'Just now'
     };
-    seededFiles[0].comments = [
-      {
-        id: 'c-alex-1',
-        line: 8,
-        authorId: 'alex_staff',
-        authorName: 'Alex Chen',
-        authorRole: 'Staff Infrastructure Engineer',
-        authorAvatar: '👨‍💻',
-        type: 'flag',
-        text: 'Critical: The rotateSessionToken() routine must validate that the salt meets minimum 256-bit entropy standards before writing to session state.',
-        timestamp: '15 mins ago',
-        resolved: false
-      }
-    ];
-  }
-  return {
-    queryId: 'PR-101',
-    title: 'PR #101: Session Token Rotation & Salt Validation',
-    jiraTicket: JSON.parse(JSON.stringify(initialJiraTicket)),
-    files: seededFiles,
-    standards: JSON.parse(JSON.stringify(architectureStandards)),
-    auditedSymbols: ["rotateSessionToken"],
-    testSuites: JSON.parse(JSON.stringify(initialTestSuites)),
-    verdicts: [
-      {
-        userId: "alex_staff",
-        userName: "Alex Chen",
-        userRole: "Staff Infrastructure Engineer",
-        userAvatar: "👨‍💻",
-        verdict: "changes_requested",
-        notes: "Requested changes on SessionManager.js: we must enforce 256-bit salt entropy validation before persisting tokens to avoid weak PRNG vulnerabilities.",
-        timestamp: "10 mins ago"
-      }
-    ]
-  };
-}
 
-function createInitialPr102State() {
-  const seededFiles = JSON.parse(JSON.stringify(initialFiles)).slice(0, 2).map((f, i) => ({
-    ...f,
-    id: `f-102-${i+1}`,
-    path: i === 0 ? "src/limiter/tokenBucket.ts" : "src/limiter/redisClient.ts",
-    specTag: i === 0 ? "AC-102-1" : "AC-102-2",
-    status: "pending",
-    reviewerStatuses: {},
-    comments: []
-  }));
-  return {
-    queryId: 'PR-102',
-    title: 'PR #102: Distributed Redis Token Bucket Rate Limiter',
-    jiraTicket: {
-      id: "PERF-218",
-      title: "Distributed Rate Limiter for Public API Endpoints",
-      author: "Marcus Brody (QA)",
-      points: 5,
-      status: "In Review",
-      description: "Implement a sliding token-bucket rate limiter backed by Redis Cluster to protect public APIs against DDoS spikes.",
-      criteria: [
-        { id: "AC-102-1", text: "Allow burst capacity of up to 50 requests/sec per client IP", completed: false },
-        { id: "AC-102-2", text: "Return HTTP 429 with Retry-After header on threshold breach", completed: false },
-        { id: "AC-102-3", text: "Gracefully fail open if Redis cluster ping exceeds 250ms", completed: false }
-      ]
-    },
-    files: seededFiles,
-    standards: JSON.parse(JSON.stringify(architectureStandards)),
-    auditedSymbols: [],
-    testSuites: JSON.parse(JSON.stringify(initialTestSuites)),
-    verdicts: []
-  };
+    this.saveQuery(queryId, query.title, query.files, query.verdicts);
+    return file;
+  }
+
+  // --- Add Comment or Flag to File ---
+  addComment(queryId, fileId, comment) {
+    const query = this.getQuery(comment.authorId, queryId);
+    if (!query) return null;
+
+    const file = query.files.find(f => f.id === fileId);
+    if (!file) return null;
+
+    file.comments = file.comments || [];
+    const newComment = {
+      id: `c_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      authorId: comment.authorId,
+      authorName: comment.authorName || 'Reviewer',
+      authorAvatar: comment.authorAvatar || '👤',
+      type: comment.type || 'note', // 'flag' | 'note' | 'approval'
+      text: comment.text,
+      timestamp: 'Just now'
+    };
+
+    file.comments.push(newComment);
+
+    if (comment.type === 'flag') {
+      file.reviewerStatuses = file.reviewerStatuses || {};
+      file.reviewerStatuses[comment.authorId] = {
+        status: 'flagged',
+        userName: comment.authorName || 'Reviewer',
+        timestamp: 'Just now'
+      };
+    }
+
+    this.saveQuery(queryId, query.title, query.files, query.verdicts);
+    return { file, comment: newComment };
+  }
+
+  // --- Record Verdict ---
+  recordVerdict(queryId, verdict) {
+    const query = this.getQuery(verdict.userId, queryId);
+    if (!query) return null;
+
+    query.verdicts = query.verdicts || [];
+    const idx = query.verdicts.findIndex(v => v.userId === verdict.userId);
+    const newVerdict = {
+      userId: verdict.userId,
+      userName: verdict.userName || 'Reviewer',
+      userAvatar: verdict.userAvatar || '👤',
+      verdict: verdict.verdict,
+      notes: verdict.notes || '',
+      timestamp: 'Just now'
+    };
+
+    if (idx >= 0) {
+      query.verdicts[idx] = newVerdict;
+    } else {
+      query.verdicts.push(newVerdict);
+    }
+
+    this.saveQuery(queryId, query.title, query.files, query.verdicts);
+    return query.verdicts;
+  }
 }
 
 export const db = new DatabaseManager();
