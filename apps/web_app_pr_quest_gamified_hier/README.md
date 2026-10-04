@@ -74,3 +74,21 @@ Given minimal time, this app can be deployed with zero database configuration:
 docker build -t pr-quest apps/web_app_pr_quest_gamified_hier
 docker run -p 3001:3001 -v $(pwd)/data:/app/data pr-quest
 ```
+## Hackathon demo: Review points
+
+Points appear beside the existing header controls. Use the existing file/block **Approve** buttons; no ownership panel or extra review forms are required.
+
+- An approval earns **1–10 points**, proportional to active review time: `max(1, floor(10 × active seconds / 30))`, capped at 10. For example, an immediate approval earns 1 point, 3 seconds earns 1 point, 15 seconds earns 5, and 30 seconds earns 10.
+- Time accrues only for the most visible expanded diff while the page is focused, no modal covers it, and the reviewer has interacted within the last minute. Hidden tabs, collapsed diffs, long heartbeat gaps, and time on another block do not accrue reading time. Server timestamps determine credit.
+- A **10-point team bonus** rewards two full-point approvals by different reviewers on different blocks, when their active review intervals overlap for at least 5 seconds and the approvals happen within 60 seconds. Each approval can participate in one bonus.
+- Repeat approvals cannot increase an award. Bulk approval earns zero points. Undoing an approval removes its points and any dependent bonus; re-approving restores the original award. Changing a diff invalidates its previous score.
+- The header shows the team total, your contribution, and earned team bonuses for the current PR. Scores persist in the existing server storage and sync every two seconds. Connection failures do not show a review-blocking panel.
+
+### Short demonstration
+
+1. Open a demo PR and approve a block immediately. The header shows a reduced award of 1 point. Switching reviewers lets each teammate earn their own points.
+2. On another unapproved block, keep its expanded diff in view for 30 seconds before approving. The team earns 10 points.
+3. For the team bonus, use two separate browser profiles or devices with different existing reviewer personas. Each person reads a different unapproved block for 30 seconds during the same window, then approves. The two approvals earn 20 points plus a 10-point team bonus.
+4. Approve again or reload: points do not multiply and the saved total remains.
+
+Timing is a lightweight hackathon signal, not proof of review quality. The existing selectable personas are demo identities. The mechanism does not change GitHub approval semantics or add a production anti-abuse system.

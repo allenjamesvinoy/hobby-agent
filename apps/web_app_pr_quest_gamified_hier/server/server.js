@@ -1,4 +1,5 @@
 import express from 'express';
+import { createReviewPointsStore, registerReviewPointsRoutes, pointsSnapshot } from './reviewPoints.js';
 import cors from 'cors';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -84,6 +85,9 @@ function resolveUserId(req) {
     'reviewer_1'
   );
 }
+
+const reviewPoints = createReviewPointsStore(db);
+registerReviewPointsRoutes(app, db, resolveUserId, reviewPoints);
 
 function getLinkedToken(userId) {
   if (!userId) return null;
@@ -889,7 +893,14 @@ app.post('/api/file-status', (req, res) => {
     return res.status(404).json({ error: 'File or query not found' });
   }
 
-  res.json({ success: true, file: updatedFile });
+  let points;
+  try {
+    const files = db.getQuery(userId, queryId)?.files || [];
+    points = status === 'approved'
+      ? reviewPoints.approve(queryId, files, userId, fileId, { bulk: req.body.bulk === true })
+      : pointsSnapshot(files, reviewPoints.read(queryId), userId);
+  } catch (_) { /* Approval remains usable if points storage is unavailable. */ }
+  res.json({ success: true, file: updatedFile, points });
 });
 
 // Add comment or flag to a code file (Shared state + GitHub writeback if GH- query)

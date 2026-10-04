@@ -43,6 +43,17 @@ class ApiClient {
     }
   }
 
+  async reviewPoints(queryId, userId, pulse) {
+    const res = await fetch(`/api/review-points${pulse ? '/pulse' : `?query=${encodeURIComponent(queryId)}`}`, {
+      method: pulse ? 'POST' : 'GET',
+      headers: this.authHeaders({ 'Content-Type': 'application/json', 'x-user-id': userId }),
+      ...(pulse ? { body: JSON.stringify({ queryId, fileId: pulse.fileId }) } : {}),
+      signal: AbortSignal.timeout(4000)
+    });
+    if (!res.ok) throw new Error('Points temporarily unavailable');
+    return res.json();
+  }
+
   async checkHealth() {
     try {
       const res = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(2000) });
@@ -235,7 +246,7 @@ class ApiClient {
         `${API_BASE}/github/pr/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${encodeURIComponent(number)}${qs}`,
         {
           headers: this.authHeaders(),
-          signal: AbortSignal.timeout(20000)
+          signal: AbortSignal.timeout(60000)
         }
       );
       const data = await res.json().catch(() => ({}));
@@ -246,8 +257,8 @@ class ApiClient {
         return { success: false, error: hint };
       }
       return { success: true, ...data };
-    } catch (_) {
-      return { success: false, error: 'Server unreachable. Start the API server with: npm run server' };
+    } catch (err) {
+      return { success: false, error: err.name === 'TimeoutError' ? 'Loading this PR timed out. Please retry.' : 'Unable to reach the server while loading this PR.' };
     }
   }
 
@@ -392,7 +403,7 @@ class ApiClient {
       });
       if (res.ok) {
         const data = await res.json();
-        localStorage.setItem(`pr_quest_query_${queryId}_${userId}`, JSON.stringify(data));
+        try { localStorage.setItem(`pr_quest_query_${queryId}_${userId}`, JSON.stringify(data)); } catch (_) {}
         return { success: true, data, isOnline: true };
       }
     } catch (_) {}
@@ -407,8 +418,8 @@ class ApiClient {
     return { success: false, error: 'Query not found', isOnline: false };
   }
 
-  async saveUserProgress(queryId, userProgress) {
-    const userId = this.currentUser?.id || 'alex';
+  async saveUserProgress(queryId, userProgress, overrideUserId = null) {
+    const userId = overrideUserId || this.currentUser?.id || 'alex';
     const cacheKey = `pr_quest_user_prog_${queryId}_${userId}`;
     localStorage.setItem(cacheKey, JSON.stringify(userProgress));
 
@@ -429,15 +440,16 @@ class ApiClient {
     return { success: true, isOnline: false };
   }
 
-  async saveQueryState(queryId, title, stateObj, userProgress) {
-    const userId = this.currentUser?.id || 'reviewer_1';
-    const cachePayload = { queryId, title, state: stateObj, userProgress, updatedAt: new Date().toISOString() };
-    localStorage.setItem(`pr_quest_query_${queryId}`, JSON.stringify(cachePayload));
+  async saveQueryState(queryId, title, stateObj, userProgress, overrideUserId = null) {
+    const userId = overrideUserId || this.currentUser?.id || 'reviewer_1';
+    const cachePayload = { ...stateObj, queryId, title, meta: stateObj.githubMeta || stateObj.meta, userProgress, updatedAt: new Date().toISOString() };
+    try { localStorage.setItem(`pr_quest_query_${queryId}_${userId}`, JSON.stringify(cachePayload)); } catch (_) { /* Storage may be full for large diffs. */ }
 
     try {
       const res = await fetch(`${API_BASE}/state`, {
         method: 'POST',
-        headers: this.authHeaders({ 'Content-Type': 'application/json' }),
+        headers: this.authHeaders({ 'Content-Type': 'application/json', 'x-user-id': userId }),
+        signal: AbortSignal.timeout(10000),
         body: JSON.stringify({ queryId, title, state: stateObj, userProgress, userId })
       });
       if (res.ok) {
@@ -448,7 +460,7 @@ class ApiClient {
     return { success: true, isOnline: false };
   }
 
-  async updateFileReviewStatus(queryId, fileId, status) {
+  async updateFileReviewStatus(queryId, fileId, status, options = {}) {
     const userId = this.currentUser?.id || 'reviewer_1';
     const userName = this.currentUser?.name || 'Reviewer';
 
@@ -456,11 +468,11 @@ class ApiClient {
       const res = await fetch(`${API_BASE}/file-status`, {
         method: 'POST',
         headers: this.authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ queryId, fileId, status, userId, userName })
+        body: JSON.stringify({ queryId, fileId, status, userId, userName, bulk: options.bulk === true })
       });
       if (res.ok) {
         const data = await res.json();
-        return { success: true, file: data.file, isOnline: true };
+        return { success: true, file: data.file, points: data.points, isOnline: true };
       }
     } catch (_) {}
 

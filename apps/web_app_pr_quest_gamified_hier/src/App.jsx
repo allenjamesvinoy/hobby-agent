@@ -10,7 +10,9 @@ import {
   initialTestSuites
 } from './mockData';
 import { api, PRESET_USERS } from './services/apiClient';
+import { mergeGithubWorkspace } from './utils/mergeGithubWorkspace';
 import QuestHeader from './components/QuestHeader';
+import { useReviewPoints } from './hooks/useReviewPoints';
 import DynamicLeftPanel from './components/DynamicLeftPanel';
 import HierarchicalDiffViewer from './components/HierarchicalDiffViewer';
 import FunctionInspectorPanel from './components/FunctionInspectorPanel';
@@ -87,7 +89,7 @@ function AppContent() {
     const urlParam = new URLSearchParams(window.location.search).get('query');
     return urlParam || localStorage.getItem('pr_quest_current_query') || 'PR-101';
   });
-  const [currentQueryTitle, setCurrentQueryTitle] = useState('PR #101: Session Token Rotation & Salt Validation');
+  const [currentQueryTitle, setCurrentQueryTitle] = useState('Loading pull request…');
   const [queries, setQueries] = useState([]);
   const [isQuerySelectorOpen, setIsQuerySelectorOpen] = useState(false);
   const [syncStatus, setSyncStatus] = useState('saved'); // 'saved' | 'syncing' | 'offline'
@@ -98,7 +100,6 @@ function AppContent() {
   });
   const [githubPullRequests, setGithubPullRequests] = useState([]);
   const [githubLoading, setGithubLoading] = useState(false);
-  const [githubPrLoading, setGithubPrLoading] = useState(false);
   const [githubError, setGithubError] = useState('');
   const [githubStatus, setGithubStatus] = useState({ linked: false, login: null, avatarUrl: null });
   const [myRepos, setMyRepos] = useState([]);
@@ -136,6 +137,7 @@ function AppContent() {
   const [alsoApproveRemaining, setAlsoApproveRemaining] = useState(false);
 
   const [selectedSpec, setSelectedSpec] = useState('ALL');
+  const [visibleReviewFile, setVisibleReviewFile] = useState(null);
   const [activeFileId, setActiveFileId] = useState(initialFiles[0]?.id || null);
   const [isArchOpen, setIsArchOpen] = useState(false);
   const [isDiagramModalOpen, setIsDiagramModalOpen] = useState(false);
@@ -145,6 +147,13 @@ function AppContent() {
   const [questLogs, setQuestLogs] = useState([]);
 
   const isInitialLoad = useRef(true);
+  const loadGeneration = useRef(0);
+  const loadedWorkspace = useRef(null);
+  const requestedWorkspace = useRef(null);
+  const [workspaceLoading, setWorkspaceLoading] = useState(true);
+  const githubPrLoading = workspaceLoading;
+  const reviewIsVisible = !workspaceLoading && !isQuerySelectorOpen && !isAuthOpen && !isArchOpen && !isDiagramModalOpen && !isVerdictOpen && !isProgressOpen && !isInfoOpen;
+  const { points: reviewPoints, acceptPoints } = useReviewPoints(currentQueryId, currentUser.id, visibleReviewFile, reviewIsVisible);
 
   const refreshGithubStatus = async () => {
     const st = await api.getGithubStatus();
@@ -155,6 +164,7 @@ function AppContent() {
   // --- Load Initial Query & Setup ---
   useEffect(() => {
     async function init() {
+      await loadQueryState(currentQueryId, currentUser);
       await api.checkHealth();
       await refreshGithubStatus();
       try {
@@ -165,12 +175,10 @@ function AppContent() {
       }
       const queryList = await api.listQueries();
       setQueries(queryList);
-      await loadQueryState(currentQueryId, currentUser);
       const repoToLoad = githubRepoUrl || (currentQueryId.startsWith('GH-') ? currentQueryId.slice(3).split('#')[0] : 'allenjamesvinoy/hobby-agent');
       if (repoToLoad) {
         handleLoadRepo(repoToLoad);
       }
-      isInitialLoad.current = false;
     }
     init();
   }, []);
@@ -188,206 +196,253 @@ function AppContent() {
   }, [currentQueryId, githubRepoUrl]);
 
   // --- Query State Loader ---
-  const loadQueryState = async (queryId, user = currentUser) => {
+  const loadQueryState = async (queryId, user = currentUser, options = {}) => {
+    requestedWorkspace.current = { queryId, user, options };
+    const generation = ++loadGeneration.current;
+    const isCurrent = () => generation === loadGeneration.current;
+    setWorkspaceLoading(true);
+    setGithubError('');
     setSyncStatus('syncing');
     const targetUserId = user?.id || 'reviewer_1';
-    const res = await api.getQueryState(queryId, targetUserId);
-
-    if (res.success && res.data) {
-      const {
-        title,
-        files: sharedFiles,
-        verdicts: sharedVerdicts,
-        jiraTicket: queryTicket,
-        standards: queryStandards,
-        architectureText: queryArch,
-        repoDocs: queryDocs,
-        meta: queryMeta,
-        userProgress,
-        testSuites: queryTestSuites,
-        architectureDiagramModel: queryArchDiagram,
-        symbolCatalog: querySymbols,
-        architectureSummary: queryArchSummary
-      } = res.data;
-      setCurrentQueryTitle(title || `PR #${queryId}`);
-
-      const isGh = String(queryId).startsWith('GH-');
-
-      if (sharedFiles && Array.isArray(sharedFiles)) {
-        const safeFiles = sharedFiles.map(f => {
-          const canonical = isGh ? null : initialFiles.find(cf => cf.id === f.id || cf.path === f.path);
-          return {
-            ...canonical,
-            ...f,
-            tier: String(f.tier || canonical?.tier || 'Tier 1: Core Logic'),
-            importance: typeof f.importance === 'number' ? f.importance : (canonical?.importance || 80),
-            diffChunks: Array.isArray(f.diffChunks) && f.diffChunks.length > 0 
-              ? f.diffChunks 
-              : (canonical?.diffChunks || []),
-            reviewerStatuses: f.reviewerStatuses || {},
-            comments: Array.isArray(f.comments) ? f.comments : []
-          };
+    try {
+      let res = await api.getQueryState(queryId, targetUserId);
+      if (!isCurrent()) return false;
+      const match = String(queryId).match(/^GH-([^/]+)\/([^#]+)#(\d+)$/);
+      if (match) {
+        const savedMeta = res.data?.meta?.githubMeta || res.data?.meta || {};
+        const fresh = await api.fetchGitHubPullRequest(match[1], match[2], match[3], {
+          head: savedMeta.head, base: savedMeta.base, ...options
         });
-        const chunkedFiles = chunkLargeFiles(safeFiles, 200);
-        setFiles(chunkedFiles);
-        setActiveFileId(prev => (prev && chunkedFiles.some(f => f.id === prev)) ? prev : (chunkedFiles[0]?.id || null));
+        if (!isCurrent()) return false;
+        if (fresh.success) {
+          const data = mergeGithubWorkspace(fresh, res.success ? res.data : null);
+          const saved = await api.saveQueryState(queryId, data.title, data, data.userProgress, targetUserId);
+          if (!isCurrent()) return false;
+          res = { success: true, data, isOnline: saved.isOnline };
+        } else if (res.success) {
+          // A usable saved workspace is a successful fallback, not a UI error.
+          res.isOnline = false;
+        } else {
+          throw new Error('Unable to load this PR right now. Please try again shortly.');
+        }
       }
 
-      if (sharedVerdicts && Array.isArray(sharedVerdicts)) {
-        setVerdicts(sharedVerdicts);
-      }
+      if (res.success && res.data) {
+        const {
+          title,
+          files: sharedFiles,
+          verdicts: sharedVerdicts,
+          jiraTicket: queryTicket,
+          standards: queryStandards,
+          architectureText: queryArch,
+          repoDocs: queryDocs,
+          meta: queryMeta,
+          userProgress,
+          testSuites: queryTestSuites,
+          architectureDiagramModel: queryArchDiagram,
+          symbolCatalog: querySymbols,
+          architectureSummary: queryArchSummary
+        } = res.data;
+        setCurrentQueryTitle(title || `PR #${queryId}`);
 
-      if (queryTicket) setJiraTicket(queryTicket);
-      const hasUploadedDoc = Array.isArray(queryDocs) && queryDocs.some(d => (d.role === 'architecture' || d.path?.toLowerCase().endsWith('architecture.md')) && d.uploaded === true);
-      setHasUploadedArchitecture(hasUploadedDoc);
+        const isGh = String(queryId).startsWith('GH-');
 
-      if (queryDocs && Array.isArray(queryDocs) && queryDocs.length > 0) {
-        setRepoDocs(queryDocs);
-      } else if (!isGh && queryId === 'PR-101') {
-        setRepoDocs(initialReferences);
-      } else {
-        setRepoDocs([]);
-      }
-
-      if (hasUploadedDoc && queryStandards && Array.isArray(queryStandards) && queryStandards.length > 0) {
-        setStandards(queryStandards);
-      } else if (!isGh && queryId === 'PR-101') {
-        setStandards(initialStandards);
-      } else {
-        setStandards([]);
-      }
-
-      if (queryArch && (queryId === 'PR-101' || queryArch !== defaultArchitecture)) {
-        setArchitectureText(queryArch);
-      } else if (!isGh && queryId === 'PR-101') {
-        setArchitectureText(defaultArchitecture);
-      } else {
-        setArchitectureText('');
-      }
-
-      if (queryMeta) setGithubMeta(queryMeta);
-
-      let resolvedSuites = (queryTestSuites && Array.isArray(queryTestSuites) && queryTestSuites.length > 0)
-        ? queryTestSuites
-        : (queryMeta?.testSuites && Array.isArray(queryMeta.testSuites) && queryMeta.testSuites.length > 0)
-          ? queryMeta.testSuites
-          : null;
-
-      if (!resolvedSuites || resolvedSuites.length === 0) {
-        if (!isGh) {
-          resolvedSuites = initialTestSuites;
-        } else if (safeFiles && safeFiles.length > 0) {
-          const primaryFiles = safeFiles.slice(0, 3);
-          resolvedSuites = primaryFiles.map((f, idx) => {
-            const fileName = f.path.split('/').pop();
-            const modName = fileName.replace(/\.[^.]+$/, '');
-            const sym = modName.charAt(0).toLowerCase() + modName.slice(1);
+        let safeFiles = [];
+        if (sharedFiles && Array.isArray(sharedFiles)) {
+          safeFiles = sharedFiles.map(f => {
+            const canonical = isGh ? null : initialFiles.find(cf => cf.id === f.id || cf.path === f.path);
             return {
-              id: `gh-test-${idx + 1}`,
-              suiteName: `${modName} Verification`,
-              testName: `should verify ${sym} flow without exceptions`,
-              file: `tests/${modName}.test.js`,
-              targetSymbol: sym,
-              targetFile: f.path,
-              targetLines: '1-40',
-              status: 'pass',
-              executionMs: 14 + idx * 4,
-              assertionsCount: 2,
-              assertions: [
-                { text: `expect(${sym}).toBeDefined()`, status: 'pass', label: 'Export Verification' },
-                { text: 'expect(result.status).toBe(200)', status: 'pass', label: 'Response Contract' }
-              ],
-              code: `describe('${modName}', () => {\n  it('should verify ${sym} flow', async () => {\n    const res = await ${sym}();\n    expect(res).toBeDefined();\n  });\n});`,
-              testedFunctionCode: `// Production Implementation in ${f.path}\nexport async function ${sym}() {\n  return { status: 200 };\n}`,
-              notes: `Auto-generated test case for ${f.path}`
+              ...canonical,
+              ...f,
+              tier: String(f.tier || canonical?.tier || 'Tier 1: Core Logic'),
+              importance: typeof f.importance === 'number' ? f.importance : (canonical?.importance || 80),
+              diffChunks: Array.isArray(f.diffChunks) && f.diffChunks.length > 0
+                ? f.diffChunks
+                : (canonical?.diffChunks || []),
+              reviewerStatuses: f.reviewerStatuses || {},
+              comments: Array.isArray(f.comments) ? f.comments : []
             };
           });
+          const chunkedFiles = chunkLargeFiles(safeFiles, 200);
+          setFiles(chunkedFiles);
+          setActiveFileId(prev => (prev && chunkedFiles.some(f => f.id === prev)) ? prev : (chunkedFiles[0]?.id || null));
         } else {
-          resolvedSuites = [];
-        }
-      }
-      setTestSuites(resolvedSuites);
-
-      const resolvedDiagram = queryArchDiagram || queryMeta?.architectureDiagramModel || null;
-      setCustomDiagramModel(resolvedDiagram);
-
-      const resolvedSymbols = querySymbols || queryMeta?.symbolCatalog || null;
-      setCustomSymbolCatalog(resolvedSymbols);
-
-      const resolvedSummary = queryArchSummary || queryMeta?.architectureSummary || '';
-      setArchitectureSummary(resolvedSummary);
-
-      if (userProgress) {
-        setLevel(userProgress.level || 1);
-        setUnlockedLevel(userProgress.unlockedLevel || 1);
-        setXp(userProgress.xp || 0);
-        setAwardedActions(userProgress.awardedActions || []);
-
-        if (Array.isArray(userProgress.criteria) && userProgress.criteria.length > 0) {
-          setJiraTicket(prev => ({
-            ...prev,
-            criteria: userProgress.criteria
-          }));
-        } else if (queryTicket?.criteria) {
-          setJiraTicket(prev => ({
-            ...prev,
-            criteria: queryTicket.criteria.map(ac => ({ ...ac, completed: false }))
-          }));
-        } else {
-          setJiraTicket(prev => ({
-            ...prev,
-            criteria: initialJiraTicket.criteria.map(ac => ({ ...ac, completed: false }))
-          }));
+          setFiles([]);
+          setActiveFileId(null);
         }
 
-        if (hasUploadedDoc && Array.isArray(userProgress.standards) && userProgress.standards.length > 0) {
-          setStandards(userProgress.standards);
-        } else if (hasUploadedDoc && queryStandards && queryStandards.length > 0) {
-          setStandards(queryStandards.map(s => ({ ...s, completed: false })));
+        setVerdicts(Array.isArray(sharedVerdicts) ? sharedVerdicts : []);
+
+        setJiraTicket(queryTicket || (isGh ? { title, description: '', criteria: [] } : initialJiraTicket));
+        const hasUploadedDoc = Array.isArray(queryDocs) && queryDocs.some(d => (d.role === 'architecture' || d.path?.toLowerCase().endsWith('architecture.md')) && d.uploaded === true);
+        setHasUploadedArchitecture(hasUploadedDoc);
+
+        if (queryDocs && Array.isArray(queryDocs) && queryDocs.length > 0) {
+          setRepoDocs(queryDocs);
         } else if (!isGh && queryId === 'PR-101') {
-          setStandards(initialStandards.map(s => ({ ...s, completed: false })));
+          setRepoDocs(initialReferences);
+        } else {
+          setRepoDocs([]);
+        }
+
+        if (hasUploadedDoc && queryStandards && Array.isArray(queryStandards) && queryStandards.length > 0) {
+          setStandards(queryStandards);
+        } else if (!isGh && queryId === 'PR-101') {
+          setStandards(initialStandards);
         } else {
           setStandards([]);
         }
 
-        if (Array.isArray(userProgress.auditedSymbols)) {
-          setAuditedSymbols(userProgress.auditedSymbols);
+        if (queryArch && (queryId === 'PR-101' || queryArch !== defaultArchitecture)) {
+          setArchitectureText(queryArch);
+        } else if (!isGh && queryId === 'PR-101') {
+          setArchitectureText(defaultArchitecture);
         } else {
+          setArchitectureText('');
+        }
+
+        setGithubMeta(queryMeta?.githubMeta || queryMeta || null);
+
+        let resolvedSuites = (queryTestSuites && Array.isArray(queryTestSuites) && queryTestSuites.length > 0)
+          ? queryTestSuites
+          : (queryMeta?.testSuites && Array.isArray(queryMeta.testSuites) && queryMeta.testSuites.length > 0)
+            ? queryMeta.testSuites
+            : null;
+
+        if (!resolvedSuites || resolvedSuites.length === 0) {
+          if (!isGh) {
+            resolvedSuites = initialTestSuites;
+          } else if (safeFiles && safeFiles.length > 0) {
+            const primaryFiles = safeFiles.slice(0, 3);
+            resolvedSuites = primaryFiles.map((f, idx) => {
+              const fileName = f.path.split('/').pop();
+              const modName = fileName.replace(/\.[^.]+$/, '');
+              const sym = modName.charAt(0).toLowerCase() + modName.slice(1);
+              return {
+                id: `gh-test-${idx + 1}`,
+                suiteName: `${modName} Verification`,
+                testName: `should verify ${sym} flow without exceptions`,
+                file: `tests/${modName}.test.js`,
+                targetSymbol: sym,
+                targetFile: f.path,
+                targetLines: '1-40',
+                status: 'pass',
+                executionMs: 14 + idx * 4,
+                assertionsCount: 2,
+                assertions: [
+                  { text: `expect(${sym}).toBeDefined()`, status: 'pass', label: 'Export Verification' },
+                  { text: 'expect(result.status).toBe(200)', status: 'pass', label: 'Response Contract' }
+                ],
+                code: `describe('${modName}', () => {\n  it('should verify ${sym} flow', async () => {\n    const res = await ${sym}();\n    expect(res).toBeDefined();\n  });\n});`,
+                testedFunctionCode: `// Production Implementation in ${f.path}\nexport async function ${sym}() {\n  return { status: 200 };\n}`,
+                notes: `Auto-generated test case for ${f.path}`
+              };
+            });
+          } else {
+            resolvedSuites = [];
+          }
+        }
+        setTestSuites(resolvedSuites);
+
+        const resolvedDiagram = queryArchDiagram || queryMeta?.architectureDiagramModel || null;
+        setCustomDiagramModel(resolvedDiagram);
+
+        const resolvedSymbols = querySymbols || queryMeta?.symbolCatalog || null;
+        setCustomSymbolCatalog(resolvedSymbols);
+
+        const resolvedSummary = queryArchSummary || queryMeta?.architectureSummary || '';
+        setArchitectureSummary(resolvedSummary);
+
+        if (userProgress) {
+          setLevel(userProgress.level || 1);
+          setUnlockedLevel(userProgress.unlockedLevel || 1);
+          setXp(userProgress.xp || 0);
+          setAwardedActions(userProgress.awardedActions || []);
+
+          if (Array.isArray(userProgress.criteria) && userProgress.criteria.length > 0) {
+            setJiraTicket(prev => ({
+              ...prev,
+              criteria: userProgress.criteria
+            }));
+          } else if (queryTicket?.criteria) {
+            setJiraTicket(prev => ({
+              ...prev,
+              criteria: queryTicket.criteria.map(ac => ({ ...ac, completed: false }))
+            }));
+          } else {
+            setJiraTicket(prev => ({
+              ...prev,
+              criteria: isGh ? [] : initialJiraTicket.criteria.map(ac => ({ ...ac, completed: false }))
+            }));
+          }
+
+          if (hasUploadedDoc && Array.isArray(userProgress.standards) && userProgress.standards.length > 0) {
+            setStandards(userProgress.standards);
+          } else if (hasUploadedDoc && queryStandards && queryStandards.length > 0) {
+            setStandards(queryStandards.map(s => ({ ...s, completed: false })));
+          } else if (!isGh && queryId === 'PR-101') {
+            setStandards(initialStandards.map(s => ({ ...s, completed: false })));
+          } else {
+            setStandards([]);
+          }
+
+          if (Array.isArray(userProgress.auditedSymbols)) {
+            setAuditedSymbols(userProgress.auditedSymbols);
+          } else {
+            setAuditedSymbols([]);
+          }
+        } else {
+          setLevel(1);
+          setUnlockedLevel(1);
+          setXp(0);
+          setAwardedActions([]);
+          if (!queryTicket) {
+            setJiraTicket(prev => ({
+              ...prev,
+              criteria: isGh ? [] : initialJiraTicket.criteria.map(ac => ({ ...ac, completed: false }))
+            }));
+          }
+          if (hasUploadedDoc && queryStandards && queryStandards.length > 0) {
+            setStandards(queryStandards.map(s => ({ ...s, completed: false })));
+          } else if (!isGh && queryId === 'PR-101') {
+            setStandards(initialStandards.map(s => ({ ...s, completed: false })));
+          } else {
+            setStandards([]);
+          }
           setAuditedSymbols([]);
         }
-      } else {
-        setLevel(1);
-        setUnlockedLevel(1);
-        setXp(0);
-        setAwardedActions([]);
-        if (!queryTicket) {
-          setJiraTicket(prev => ({
-            ...prev,
-            criteria: initialJiraTicket.criteria.map(ac => ({ ...ac, completed: false }))
-          }));
-        }
-        if (hasUploadedDoc && queryStandards && queryStandards.length > 0) {
-          setStandards(queryStandards.map(s => ({ ...s, completed: false })));
-        } else if (!isGh && queryId === 'PR-101') {
-          setStandards(initialStandards.map(s => ({ ...s, completed: false })));
-        } else {
-          setStandards([]);
-        }
-        setAuditedSymbols([]);
-      }
 
-      setSyncStatus(res.isOnline ? 'saved' : 'offline');
-    } else {
-      setSyncStatus('offline');
+        setCurrentQueryId(queryId);
+        setSelectedSpec('ALL');
+        setIsVerdictOpen(false);
+        setUserVerdictNotes('');
+        setQuestLogs([]);
+        loadedWorkspace.current = { queryId, userId: targetUserId };
+        isInitialLoad.current = false;
+        setSyncStatus(res.isOnline ? 'saved' : 'offline');
+        return true;
+      } else {
+        throw new Error(res.error || `Unable to load ${queryId}`);
+      }
+    } catch (err) {
+      if (isCurrent()) {
+        setGithubError(err.message);
+        setSyncStatus('offline');
+      }
+      return false;
+    } finally {
+      if (isCurrent()) setWorkspaceLoading(false);
     }
   };
 
   // --- Debounced Auto-Save to SQLite Database ---
   useEffect(() => {
-    if (isInitialLoad.current) return;
+    if (isInitialLoad.current || workspaceLoading || loadedWorkspace.current?.queryId !== currentQueryId || loadedWorkspace.current?.userId !== currentUser.id) return;
+    const generation = loadGeneration.current;
 
     setSyncStatus('syncing');
     const timer = setTimeout(async () => {
+      if (generation !== loadGeneration.current) return;
       const progressObj = {
         level,
         unlockedLevel,
@@ -397,12 +452,13 @@ function AppContent() {
         standards,
         auditedSymbols
       };
-      const res = await api.saveUserProgress(currentQueryId, progressObj);
+      const res = await api.saveUserProgress(currentQueryId, progressObj, currentUser.id);
+      if (generation !== loadGeneration.current) return;
       setSyncStatus(res.isOnline ? 'saved' : 'offline');
     }, 600);
 
     return () => clearTimeout(timer);
-  }, [currentQueryId, jiraTicket.criteria, standards, auditedSymbols, level, unlockedLevel, xp, awardedActions]);
+  }, [workspaceLoading, currentUser.id, currentQueryId, jiraTicket.criteria, standards, auditedSymbols, level, unlockedLevel, xp, awardedActions]);
 
   // --- Persona Switch Handler ---
   const handleSelectPersona = async (personaId) => {
@@ -443,8 +499,6 @@ function AppContent() {
 
   // --- Query Switch & Create Handlers ---
   const handleSelectQuery = async (queryId) => {
-    if (queryId === currentQueryId) return;
-    setCurrentQueryId(queryId);
     await loadQueryState(queryId, currentUser);
     const updatedQueries = await api.listQueries();
     setQueries(updatedQueries);
@@ -462,8 +516,6 @@ function AppContent() {
     };
 
     await api.saveQueryState(cleanId, cleanTitle, newState, { level: 1, unlockedLevel: 1, xp: 0, awardedActions: [] });
-    setCurrentQueryId(cleanId);
-    setCurrentQueryTitle(cleanTitle);
     await loadQueryState(cleanId, currentUser);
     const updatedQueries = await api.listQueries();
     setQueries(updatedQueries);
@@ -555,129 +607,7 @@ function AppContent() {
     if (!owner || !repo || !prNumber) return;
 
     const targetQueryId = pr.queryId || `GH-${owner}/${repo}#${prNumber}`;
-    if (targetQueryId === currentQueryId && !githubPrLoading) return;
-
-    setGithubPrLoading(true);
-    setGithubError('');
-    setSyncStatus('syncing');
-
-    try {
-      const res = await api.fetchGitHubPullRequest(owner, repo, prNumber, {
-        head: pr.head,
-        base: pr.base,
-        title: pr.title
-      });
-      setGithubPrLoading(false);
-
-      if (!res.success) {
-        const errMsg = res.error || `Failed to load PR #${prNumber}`;
-        setGithubError(errMsg);
-        setSyncStatus('offline');
-        setQuestLogs(prev => [
-          {
-            id: Date.now(),
-            text: `⚠️ Failed to load PR #${prNumber}: ${errMsg}`,
-            timestamp: new Date().toLocaleTimeString()
-          },
-          ...prev
-        ].slice(0, 5));
-        return;
-      }
-
-      await applyGithubWorkspace(res);
-      setQuestLogs(prev => [
-        {
-          id: Date.now(),
-          text: `🔀 Switched to GitHub PR #${prNumber}: ${pr.title || res.title}`,
-          timestamp: new Date().toLocaleTimeString()
-        },
-        ...prev
-      ].slice(0, 5));
-    } catch (err) {
-      setGithubPrLoading(false);
-      setGithubError(err.message || `Failed to load PR #${prNumber}`);
-      setSyncStatus('offline');
-    }
-  };
-
-  const applyGithubWorkspace = async (workspace) => {
-    const queryId = workspace.queryId;
-    const title = workspace.title;
-    const existing = await api.getQueryState(queryId);
-
-    const hasSavedReview = existing.success && existing.data?.files && existing.data.files.length > 0;
-
-    if (hasSavedReview) {
-      setCurrentQueryId(queryId);
-      setCurrentQueryTitle(existing.data.title || title);
-      await loadQueryState(queryId, currentUser);
-    } else {
-      const chunkedFiles = chunkLargeFiles(workspace.files || [], 200);
-      const nextStandards = [];
-      const nextArchitectureText = '';
-      const nextRepoDocs = Array.isArray(workspace.repoDocs)
-        ? workspace.repoDocs.filter(d => d.role !== 'architecture' || d.uploaded === true)
-        : [];
-      const nextTestSuites = Array.isArray(workspace.testSuites) && workspace.testSuites.length > 0
-        ? workspace.testSuites
-        : (workspace.meta?.testSuites && Array.isArray(workspace.meta.testSuites) ? workspace.meta.testSuites : []);
-      const nextDiagramModel = null;
-      const nextSymbolCatalog = workspace.symbolCatalog || null;
-
-      const newState = {
-        queryId,
-        title,
-        jiraTicket: workspace.jiraTicket,
-        files: chunkedFiles,
-        references: [],
-        standards: nextStandards,
-        architectureText: nextArchitectureText,
-        repoDocs: nextRepoDocs,
-        auditedSymbols: [],
-        testSuites: nextTestSuites,
-        architectureDiagramModel: nextDiagramModel,
-        symbolCatalog: nextSymbolCatalog,
-        verdicts: [],
-        githubMeta: workspace.meta || null
-      };
-
-      await api.saveQueryState(queryId, title, newState, {
-        level: 1,
-        unlockedLevel: 1,
-        xp: 0,
-        awardedActions: []
-      });
-
-      setCurrentQueryId(queryId);
-      setCurrentQueryTitle(title);
-      setJiraTicket(workspace.jiraTicket);
-      setFiles(chunkedFiles);
-      setActiveFileId(chunkedFiles[0]?.id || null);
-      setStandards(nextStandards);
-      setArchitectureText(nextArchitectureText);
-      setRepoDocs(nextRepoDocs);
-      setAuditedSymbols([]);
-      setTestSuites(nextTestSuites);
-      setCustomDiagramModel(nextDiagramModel);
-      setCustomSymbolCatalog(nextSymbolCatalog);
-      setVerdicts([]);
-      setGithubMeta(workspace.meta || null);
-      setLevel(1);
-      setUnlockedLevel(1);
-      setXp(0);
-      setAwardedActions([]);
-      setSelectedSpec('ALL');
-      setHasUploadedArchitecture(false);
-      setSyncStatus('saved');
-
-      if (nextSymbolCatalog && Object.keys(nextSymbolCatalog).length > 0) {
-        setActiveSymbolKey(Object.keys(nextSymbolCatalog)[0]);
-      } else {
-        const derived = buildSymbolCatalogFromFiles(workspace.files || []);
-        setActiveSymbolKey(derived.defaultKey || null);
-      }
-    }
-
+    await loadQueryState(targetQueryId, currentUser, { head: pr.head, base: pr.base, title: pr.title });
     const updatedQueries = await api.listQueries();
     setQueries(updatedQueries);
   };
@@ -825,7 +755,7 @@ function AppContent() {
   const totalProgressPercent = Math.min(100, Math.round(l1Prog + l2Prog + l3Prog + l4FileProg + l4VerdictProg));
 
   // --- Review Action Handlers ---
-  const handleUpdateFileStatus = async (fileId, status) => {
+  const handleUpdateFileStatus = async (fileId, status, options = {}) => {
     if (status === 'reset') {
       setSelectedSpec('ALL');
       return;
@@ -843,7 +773,8 @@ function AppContent() {
       return f;
     }));
 
-    await api.updateFileReviewStatus(currentQueryId, fileId, status);
+    const result = await api.updateFileReviewStatus(currentQueryId, fileId, status, options);
+    acceptPoints(result.points, currentQueryId, currentUser.id);
   };
 
   const handleAddComment = async (fileId, commentPayload) => {
@@ -948,7 +879,7 @@ function AppContent() {
     if (userVerdictType === 'approved' && alsoApproveRemaining && pendingCount > 0) {
       for (const f of files) {
         if (getUserFileStatus(f) === 'pending') {
-          await handleUpdateFileStatus(f.id, 'approved');
+          await handleUpdateFileStatus(f.id, 'approved', { bulk: true });
         }
       }
     }
@@ -1031,7 +962,8 @@ function AppContent() {
         level={level} 
         setLevel={setLevel} 
         unlockedLevel={unlockedLevel}
-        xp={xp} 
+        xp={xp}
+        reviewPoints={reviewPoints}
         totalFiles={files.length} 
         reviewedCount={reviewedCount} 
         progressPercent={totalProgressPercent}
@@ -1065,8 +997,15 @@ function AppContent() {
         hasArchitectureDoc={hasArchitectureDoc}
       />
 
+      {githubError && (
+        <div role="alert" className="mx-6 mt-4 rounded-lg border border-[#F7D8D0] bg-[#FFF8F6] p-3 text-sm text-[#A84725]">
+          {githubError}
+          <button className="ml-3 underline" onClick={() => { const target = requestedWorkspace.current; loadQueryState(target.queryId, target.user, target.options); }}>Retry loading PR</button>
+        </div>
+      )}
+      {workspaceLoading && <div role="status" className="p-4 text-center text-sm">Loading pull request changes…</div>}
       {/* Main Workspace: Dynamically adapts per level */}
-      <main className="flex-1 max-w-7xl xl:max-w-[1440px] w-full mx-auto p-4 lg:p-6">
+      <main key={`${currentQueryId}:${currentUser.id}`} inert={workspaceLoading ? '' : undefined} aria-busy={workspaceLoading} style={!loadedWorkspace.current ? { display: 'none' } : workspaceLoading ? { opacity: 0.4, pointerEvents: 'none' } : undefined} className="flex-1 max-w-7xl xl:max-w-[1440px] w-full mx-auto p-4 lg:p-6">
         {level === 4 ? (
           <div className="w-full">
             <TestReviewWorkspace 
@@ -1082,7 +1021,8 @@ function AppContent() {
           /* Level 3: Only Middle (Diff Workspace) and Right (Function Inspector) Panel */
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             <section className="lg:col-span-7">
-              <HierarchicalDiffViewer 
+              <HierarchicalDiffViewer
+                onReviewFocus={setVisibleReviewFile}
                 files={files} 
                 selectedSpec={selectedSpec} 
                 activeFileId={activeFileId} 
@@ -1148,7 +1088,8 @@ function AppContent() {
               />
             </section>
             <section className="lg:col-span-8">
-                <HierarchicalDiffViewer 
+                <HierarchicalDiffViewer
+                onReviewFocus={setVisibleReviewFile}
                   files={files} 
                   selectedSpec={selectedSpec} 
                   activeFileId={activeFileId} 

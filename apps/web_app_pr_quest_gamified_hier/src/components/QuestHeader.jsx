@@ -5,7 +5,8 @@ export default function QuestHeader({
   level, 
   setLevel, 
   unlockedLevel = 1,
-  xp, 
+  xp,
+  reviewPoints,
   totalFiles, 
   reviewedCount, 
   progressPercent = 0,
@@ -142,6 +143,11 @@ export default function QuestHeader({
 
         {/* Right: Architecture Diagram + Subtle Refresh + Circular User on the Right */}
         <div className="flex items-center justify-end gap-2.5">
+          <div className="flex items-center gap-1.5 rounded-lg border border-[#E6E0D5] bg-[#FFFDF9] px-3 py-1.5 text-xs" title="Per PR: each first manual approval earns at least 1 point, rising to 10 after 30 seconds of active review. Each reviewer earns their own contribution. Faster approvals earn proportionally less. Full-point reviews on different blocks earn a 10-point team bonus when teammates overlap for 5 seconds and approve within 60 seconds. Repeat and bulk approvals add no extra points.">
+            <Award className="h-4 w-4 text-[#C35832]" />
+            <span className="font-bold text-[#C35832]" aria-live="polite">{reviewPoints?.teamPoints ?? '—'} team pts</span>
+            {reviewPoints && <span className="text-[#8C827A]">You {reviewPoints.myPoints}{reviewPoints.bonusPoints > 0 ? ` · +${reviewPoints.bonusPoints} team bonus` : ''}</span>}
+          </div>
           {onOpenArch && (
             <button
               onClick={onOpenArch}

@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Check, AlertTriangle, MessageSquare, Star, ChevronDown, ChevronUp, Search, Info, ShieldAlert, Sparkles, X, Send, Trash2, Flag, Award } from 'lucide-react';
 import PeerCommentsSection from './PeerCommentsSection';
 
 export default function HierarchicalDiffViewer({ 
   files = [], 
   selectedSpec, 
-  activeFileId, 
+  activeFileId,
+  onReviewFocus,
   setActiveFileId, 
   onUpdateFileStatus, 
   onAddComment,
@@ -21,6 +22,21 @@ export default function HierarchicalDiffViewer({
   const [commentInputs, setCommentInputs] = useState({});
   const [expandedFiles, setExpandedFiles] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
+  const blockElements = useRef(new Map());
+  useEffect(() => {
+    const visibleBlock = () => {
+      let selected = null, largest = 0;
+      for (const [id, element] of blockElements.current) {
+        const box = element.getBoundingClientRect();
+        const visible = Math.max(0, Math.min(box.bottom, window.innerHeight) - Math.max(box.top, 0));
+        if (visible > largest && visible >= 48) { largest = visible; selected = id; }
+      }
+      onReviewFocus?.(selected);
+    };
+    visibleBlock();
+    const timer = setInterval(visibleBlock, 500);
+    return () => { clearInterval(timer); onReviewFocus?.(null); };
+  }, [onReviewFocus]);
   const [flaggingFileId, setFlaggingFileId] = useState(null);
   const [flagText, setFlagText] = useState('');
   const [flagCategory, setFlagCategory] = useState('Security / Correctness');
@@ -393,7 +409,7 @@ export default function HierarchicalDiffViewer({
 
                   {/* Diff Viewer */}
                   {Array.isArray(file.diffChunks) && file.diffChunks.length > 0 ? (
-                    <div className="border border-[#E6E0D5] rounded-xl overflow-hidden font-mono text-xs shadow-inner">
+                    <div ref={element => { if (element) blockElements.current.set(file.id, element); else blockElements.current.delete(file.id); }} className="border border-[#E6E0D5] rounded-xl overflow-hidden font-mono text-xs shadow-inner">
                       {file.diffChunks.map((chunk, chunkIdx) => (
                         <div key={chunkIdx} className="border-b border-[#F1ECE4] last:border-0">
                           <div className="bg-[#F1ECE4]/60 text-[#6B635A] px-4 py-1 text-[11px] select-none font-semibold">

@@ -11,16 +11,10 @@ import {
   extractMarkdownChecklist 
 } from './heuristicSynthesizer.js';
 import { chunkLargeFiles } from './locChunker.js';
-import { execSync } from 'node:child_process';
-import path from 'node:path';
-import fs from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { findLocalGitRepo, resolveLocalGitBranch, resolveCommit, readGit, readGitDocument } from './localGit.js';
+export { findLocalGitRepo, resolveLocalGitBranch } from './localGit.js';
 import { db } from './db.js';
 import { buildSymbolCatalogFromFiles } from '../src/utils/buildSymbolCatalog.js';
-import { resolveGeminiApiKey, deriveSymbolsAndTests } from './gemini.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const GITHUB_API = 'https://api.github.com';
 const MAX_CRITERIA = 8;
@@ -102,7 +96,7 @@ function githubHeaders(accessToken) {
 }
 
 async function githubFetch(path, accessToken) {
-  const res = await fetch(`${GITHUB_API}${path}`, { headers: githubHeaders(accessToken) });
+  const res = await fetch(`${GITHUB_API}${path}`, { headers: githubHeaders(accessToken), signal: AbortSignal.timeout(10000) });
   const remaining = res.headers.get('x-ratelimit-remaining');
   if (!res.ok) {
     let message = `GitHub API error (${res.status})`;
@@ -119,7 +113,7 @@ async function githubFetch(path, accessToken) {
 }
 
 async function githubFetchOptional(path, accessToken) {
-  const res = await fetch(`${GITHUB_API}${path}`, { headers: githubHeaders(accessToken) });
+  const res = await fetch(`${GITHUB_API}${path}`, { headers: githubHeaders(accessToken), signal: AbortSignal.timeout(10000) });
   if (res.status === 404) return null;
   if (!res.ok) {
     let message = `GitHub API error (${res.status})`;
@@ -174,37 +168,12 @@ export function parseGithubQueryId(queryId) {
  * List open pull requests for a repo (paginates up to 100).
  * Uses linked-user token when provided; otherwise public/unauthenticated (or GITHUB_TOKEN).
  */
-export function findLocalGitRepo(owner, repo) {
-  const candidates = [
-    process.cwd(),
-    path.resolve(__dirname, '../../..'),
-    path.resolve(__dirname, '../../../..'),
-    '/Users/allenjamesvinoy/.gemini/antigravity/scratch/hobby-agent-incubator'
-  ];
-  for (const dir of candidates) {
-    try {
-      if (!fs.existsSync(path.join(dir, '.git'))) continue;
-      const remoteOut = execSync('git remote -v', {
-        cwd: dir,
-        env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null' },
-        encoding: 'utf8'
-      });
-      if (repo && remoteOut.includes(repo)) {
-        return dir;
-      }
-      return dir;
-    } catch (_) {}
-  }
-  return null;
-}
-
 export function listLocalGitPullRequests(owner = 'allenjamesvinoy', repo = 'hobby-agent') {
   const repoDir = findLocalGitRepo(owner, repo);
   if (!repoDir) return [];
-  const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null' };
 
   try {
-    const branchesRaw = execSync('git branch -a', { cwd: repoDir, env, encoding: 'utf8' });
+    const branchesRaw = readGit(repoDir, ['branch', '-a']);
     const lines = branchesRaw.split('\n').map(l => l.trim().replace(/^[* ]\s*/, '')).filter(Boolean);
     const prs = [];
     const seenNumbers = new Set();
@@ -221,16 +190,13 @@ export function listLocalGitPullRequests(owner = 'allenjamesvinoy', repo = 'hobb
 
       if (prMatch) {
         prNumber = parseInt(prMatch[1], 10);
-      } else if (ideaMatch) {
-        const issueNum = parseInt(ideaMatch[1], 10);
-        prNumber = issueNum + 1;
       }
 
       if (!prNumber || seenNumbers.has(prNumber)) continue;
       seenNumbers.add(prNumber);
 
       try {
-        const commitSubject = execSync('git log -n 1 --format="%s" ' + b, { cwd: repoDir, env, encoding: 'utf8' }).trim();
+        const commitSubject = readGit(repoDir, ['log', '-n', '1', '--format=%s', b]).trim();
         title = commitSubject.replace(/^feat:\s*autonomous implementation for\s*['"]?|['"]?$/gi, '').trim() || (`PR #${prNumber}`);
         if (ideaMatch) {
           title = `🤖 [Agent PR] ${title}`;
@@ -262,6 +228,19 @@ export function listLocalGitPullRequests(owner = 'allenjamesvinoy', repo = 'hobb
       });
     }
 
+    // Reuse recorded GitHub PR-to-branch mappings when remote listing is unavailable.
+    for (const summary of db.listQueries()) {
+      const match = summary.query_id.match(/^GH-([^/]+)\/([^#]+)#(\d+)$/);
+      if (!match || match[1].toLowerCase() !== owner.toLowerCase() || match[2].toLowerCase() !== repo.toLowerCase()) continue;
+      const number = Number(match[3]);
+      if (seenNumbers.has(number)) continue;
+      const saved = db.getQuery('reviewer_1', summary.query_id);
+      const meta = saved?.meta?.githubMeta || saved?.meta || {};
+      if (!meta.head || !resolveLocalGitBranch(repoDir, number, meta.head)) continue;
+      prs.push({ number, title: summary.title, queryId: summary.query_id, owner, repo,
+        head: meta.head, base: meta.base || 'main', isLocalFallback: true,
+        labels: ['local-git-synced'], htmlUrl: `https://github.com/${owner}/${repo}/pull/${number}` });
+    }
     return prs.sort((a, b) => b.number - a.number);
   } catch (err) {
     console.warn('[github-local] Failed to list local git PRs:', err.message);
@@ -399,22 +378,16 @@ function decodeContentFile(fileJson) {
  * Fetch first existing candidate for a role at a given commit SHA.
  */
 async function fetchDocForRole(owner, repo, role, candidates, refSha, changedPathSet, accessToken) {
-  for (const path of candidates) {
+  const results = await Promise.all(candidates.map(async (path) => {
     const data = await githubFetchOptional(
       `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(refSha)}`,
       accessToken
     );
-    if (!data) continue;
-    const content = decodeContentFile(data);
-    if (!content || !content.trim()) continue;
-    return {
-      role,
-      path: data.path || path,
-      content: content.trim(),
-      changedInPr: changedPathSet.has((data.path || path).toLowerCase())
-    };
-  }
-  return null;
+    const content = data && decodeContentFile(data);
+    return content?.trim() ? { role, path: data.path || path, content: content.trim(),
+      changedInPr: changedPathSet.has((data.path || path).toLowerCase()) } : null;
+  }));
+  return results.find(Boolean) || null;
 }
 
 /**
@@ -724,43 +697,9 @@ export async function fetchGithubIssue(owner, repo, issueNumber, accessToken) {
   }
 }
 
-export function resolveLocalGitBranch(repoDir, number, headOpt) {
-  const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null' };
-  try {
-    const allBranches = execSync('git branch -a', { cwd: repoDir, env, encoding: 'utf8' })
-      .split('\n')
-      .map(b => b.trim().replace(/^[* ]\s*/, '').replace(/^remotes\/origin\//, ''))
-      .filter(b => b && !b.includes('->'));
-
-    const unique = Array.from(new Set(allBranches));
-
-    if (headOpt) {
-      const cleanHead = headOpt.replace(/^origin\//, '');
-      if (unique.includes(cleanHead)) return cleanHead;
-    }
-    if (unique.includes(`pr-${number}`)) return `pr-${number}`;
-    if (unique.includes(`idea-issue-${number}`)) return `idea-issue-${number}`;
-    if (unique.includes(`idea-issue-${number - 1}`)) return `idea-issue-${number - 1}`;
-
-    const matched = unique.find(b =>
-      b === `pr-${number}` ||
-      b.startsWith(`idea-issue-${number - 1}`) ||
-      b.startsWith(`idea-issue-${number}`) ||
-      b.includes(`issue-${number}`) ||
-      b.includes(`issue-${number - 1}`) ||
-      b.includes(`pr-${number}`)
-    );
-    return matched || null;
-  } catch (err) {
-    console.warn('[github] Error inspecting local git branches:', err.message);
-    return null;
-  }
-}
-
 export async function fetchPullRequestFromLocalGit(owner, repo, number, options = {}) {
   const repoDir = findLocalGitRepo(owner, repo);
   if (!repoDir) return null;
-  const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null' };
 
   const targetBranch = resolveLocalGitBranch(repoDir, number, options.head);
   if (!targetBranch) {
@@ -768,63 +707,19 @@ export async function fetchPullRequestFromLocalGit(owner, repo, number, options 
     return null;
   }
 
-  // Determine target ref
-  let targetRef = null;
-  try {
-    targetRef = execSync(`git rev-parse --verify origin/${targetBranch} 2>/dev/null || git rev-parse --verify ${targetBranch}`, {
-      cwd: repoDir,
-      env,
-      encoding: 'utf8'
-    }).trim();
-  } catch (err) {
-    console.warn(`[github-local] Failed to rev-parse target branch:`, err.message);
-    return null;
-  }
+  const targetRef = resolveCommit(repoDir, targetBranch);
+  const baseBranch = options.base || 'main';
+  const baseRef = resolveCommit(repoDir, baseBranch);
+  if (!targetRef || !baseRef) return null;
 
-  // Determine base ref
-  let baseRef = 'origin/main';
-  try {
-    baseRef = execSync(`git rev-parse --verify origin/main 2>/dev/null || git rev-parse --verify main`, {
-      cwd: repoDir,
-      env,
-      encoding: 'utf8'
-    }).trim();
-  } catch (_) {}
-
-  // Diff numstat
-  let numstat = '';
-  try {
-    numstat = execSync(`git diff --numstat ${baseRef}...${targetRef}`, {
-      cwd: repoDir,
-      env,
-      encoding: 'utf8'
-    });
-  } catch (err) {
-    console.warn(`[github-local] git diff failed:`, err.message);
-    return null;
-  }
-
+  const numstat = readGit(repoDir, ['diff', '--no-renames', '--numstat', '-z', `${baseRef}...${targetRef}`]);
   const rawFiles = [];
-  for (const line of numstat.trim().split('\n').filter(Boolean)) {
-    const [adds, dels, filename] = line.split('\t');
-    if (!filename) continue;
-    let patch = '';
-    try {
-      patch = execSync(`git diff -u ${baseRef}...${targetRef} -- "${filename}"`, {
-        cwd: repoDir,
-        env,
-        encoding: 'utf8'
-      });
-    } catch (_) {}
-
-    rawFiles.push({
-      filename,
-      path: filename,
-      status: (parseInt(adds, 10) > 0 && parseInt(dels, 10) === 0) ? 'added' : 'modified',
-      additions: parseInt(adds, 10) || 0,
-      deletions: parseInt(dels, 10) || 0,
-      patch
-    });
+  for (const entry of numstat.split('\0').filter(Boolean)) {
+    const match = entry.match(/^([^\t]+)\t([^\t]+)\t([\s\S]+)$/);
+    if (!match) continue;
+    const [, adds, dels, filename] = match;
+    const patch = readGit(repoDir, ['diff', '--no-renames', '-u', `${baseRef}...${targetRef}`, '--', filename]);
+    rawFiles.push({ filename, path: filename, status: 'modified', additions: parseInt(adds, 10) || 0, deletions: parseInt(dels, 10) || 0, patch });
   }
 
   // Commit info
@@ -832,35 +727,27 @@ export async function fetchPullRequestFromLocalGit(owner, repo, number, options 
   let commitBody = '';
   let commitAuthor = 'github-actions[bot]';
   try {
-    commitTitle = execSync(`git log -n 1 --format="%s" ${targetRef}`, { cwd: repoDir, env, encoding: 'utf8' }).trim();
-    commitBody = execSync(`git log -n 1 --format="%b" ${targetRef}`, { cwd: repoDir, env, encoding: 'utf8' }).trim();
-    commitAuthor = execSync(`git log -n 1 --format="%an" ${targetRef}`, { cwd: repoDir, env, encoding: 'utf8' }).trim();
+    commitTitle = readGit(repoDir, ['log', '-n', '1', '--format=%s', targetRef]).trim();
+    commitBody = readGit(repoDir, ['log', '-n', '1', '--format=%b', targetRef]).trim();
+    commitAuthor = readGit(repoDir, ['log', '-n', '1', '--format=%an', targetRef]).trim();
   } catch (_) {}
 
   const prTitle = options.title || commitTitle.replace(/^feat:\s*autonomous implementation for\s*['"]?|['"]?$/gi, '').trim() || `PR #${number}`;
 
+  // Load diffs without waiting for optional AI enrichment (available via AI Populate).
   // Repo Docs: only issue specs and readmes; architecture must be uploaded in UI
   const repoDocs = [];
 
   const specCandidates = ['docs/simulated_issue_spec.md', 'docs/CONTEXT.md', 'CONTEXT.md', 'docs/PRODUCT.md', 'PRODUCT.md'];
   for (const rel of specCandidates) {
-    const full = path.join(repoDir, rel);
-    if (fs.existsSync(full)) {
-      const content = fs.readFileSync(full, 'utf8').trim();
-      if (content) {
-        repoDocs.push({ role: 'product', path: rel, content, changedInPr: false });
-        break;
-      }
-    }
-  }
-
-  const readmePath = path.join(repoDir, 'README.md');
-  if (fs.existsSync(readmePath)) {
-    const content = fs.readFileSync(readmePath, 'utf8').trim();
+    const content = readGitDocument(repoDir, targetRef, rel);
     if (content) {
-      repoDocs.push({ role: 'readme', path: 'README.md', content, changedInPr: false });
+      repoDocs.push({ role: 'product', path: rel, content, changedInPr: rawFiles.some(f => f.path === rel) });
+      break;
     }
   }
+  const readme = readGitDocument(repoDir, targetRef, 'README.md');
+  if (readme) repoDocs.push({ role: 'readme', path: 'README.md', content: readme, changedInPr: false });
 
   const specDoc = repoDocs.find(d => d.path.includes('simulated_issue_spec') || d.role === 'product');
   const archDoc = repoDocs.find(d => d.role === 'architecture');
@@ -894,42 +781,20 @@ export async function fetchPullRequestFromLocalGit(owner, repo, number, options 
   // Architecture standards and diagram are empty for GitHub PRs until user uploads architecture.md
   const standards = [];
   const architectureText = '';
-  let testSuites = synthesizeTestSuites(rawFiles, prTitle);
+  const testSuites = synthesizeTestSuites(rawFiles, prTitle);
   const architectureDiagramModel = null;
 
   const chunkedFiles = chunkLargeFiles(mappedFiles, 200);
   const derivedCatalog = buildSymbolCatalogFromFiles(chunkedFiles);
-  let symbolCatalog = derivedCatalog.catalog;
+  const symbolCatalog = derivedCatalog.catalog;
 
-  // Background Gemini AI enrichment if configured
-  const geminiKey = resolveGeminiApiKey(null, db.getSetting?.('gemini_api_key'));
-  if (geminiKey) {
-    try {
-      const geminiData = await deriveSymbolsAndTests({
-        files: chunkedFiles,
-        prTitle,
-        prBody: issueBody || '',
-        criteria,
-        apiKey: geminiKey
-      });
-      if (geminiData?.symbolCatalog && Object.keys(geminiData.symbolCatalog).length > 0) {
-        symbolCatalog = { ...symbolCatalog, ...geminiData.symbolCatalog };
-      }
-      if (Array.isArray(geminiData?.testSuites) && geminiData.testSuites.length > 0) {
-        testSuites = geminiData.testSuites;
-      }
-    } catch (gErr) {
-      console.warn('[Gemini] Automatic background derivation failed, keeping heuristic:', gErr.message);
-    }
-  }
-
-  const linkedIssueNumber = number > 1 ? (number - 1) : number;
-  const linkedIssue = {
+  const linkedIssueNumber = Number(targetBranch.match(/(?:^|\/)idea-issue-(\d+)(?:-|$)/)?.[1]) || null;
+  const linkedIssue = linkedIssueNumber ? {
     number: linkedIssueNumber,
     title: prTitle,
     description: issueBody || `Local specification for Issue #${linkedIssueNumber}`,
     author: commitAuthor
-  };
+  } : null;
 
   return {
     queryId: `GH-${owner}/${repo}#${number}`,
@@ -940,7 +805,7 @@ export async function fetchPullRequestFromLocalGit(owner, repo, number, options 
     htmlUrl: `https://github.com/${owner}/${repo}/pull/${number}`,
     user: commitAuthor,
     jiraTicket: {
-      id: `#${linkedIssueNumber}`,
+      id: linkedIssueNumber ? `#${linkedIssueNumber}` : `${owner}/${repo}#${number}`,
       title: prTitle,
       description: issueBody || `PR #${number} locally synchronized from ${targetBranch}`,
       criteria,
@@ -957,7 +822,7 @@ export async function fetchPullRequestFromLocalGit(owner, repo, number, options 
     isLocalFallback: true,
     meta: {
       draft: false,
-      base: 'main',
+      base: baseBranch,
       head: targetBranch,
       headSha: targetRef,
       createdAt: new Date().toISOString(),
@@ -1064,36 +929,14 @@ export async function fetchPullRequestWorkspace(owner, repo, number, accessToken
   const architectureDiagramModel = null;
 
   // 4. Test suites
-  let testSuites = synthesizeTestSuites(normalizedFiles, pr.title);
+  const testSuites = synthesizeTestSuites(normalizedFiles, pr.title);
 
   // 5. Break down files exceeding 200 lines into logical chunks
   const chunkedFiles = chunkLargeFiles(mappedFiles, 200);
 
   // 6. Level 3 Symbol Catalog with complete function bodies
   const derivedCatalog = buildSymbolCatalogFromFiles(chunkedFiles);
-  let symbolCatalog = derivedCatalog.catalog;
-
-  // Background Gemini AI enrichment if configured
-  const geminiKey = resolveGeminiApiKey(null, db.getSetting?.('gemini_api_key'));
-  if (geminiKey) {
-    try {
-      const geminiData = await deriveSymbolsAndTests({
-        files: chunkedFiles,
-        prTitle: pr.title,
-        prBody: bodyPreview || '',
-        criteria,
-        apiKey: geminiKey
-      });
-      if (geminiData?.symbolCatalog && Object.keys(geminiData.symbolCatalog).length > 0) {
-        symbolCatalog = { ...symbolCatalog, ...geminiData.symbolCatalog };
-      }
-      if (Array.isArray(geminiData?.testSuites) && geminiData.testSuites.length > 0) {
-        testSuites = geminiData.testSuites;
-      }
-    } catch (gErr) {
-      console.warn('[Gemini] Automatic background derivation failed, keeping heuristic:', gErr.message);
-    }
-  }
+  const symbolCatalog = derivedCatalog.catalog;
 
   return {
     queryId: `GH-${owner}/${repo}#${pr.number}`,
