@@ -166,8 +166,9 @@ function AppContent() {
       const queryList = await api.listQueries();
       setQueries(queryList);
       await loadQueryState(currentQueryId, currentUser);
-      if (githubRepoUrl) {
-        handleLoadRepo(githubRepoUrl);
+      const repoToLoad = githubRepoUrl || (currentQueryId.startsWith('GH-') ? currentQueryId.slice(3).split('#')[0] : 'allenjamesvinoy/hobby-agent');
+      if (repoToLoad) {
+        handleLoadRepo(repoToLoad);
       }
       isInitialLoad.current = false;
     }
@@ -237,7 +238,18 @@ function AppContent() {
       }
 
       if (queryTicket) setJiraTicket(queryTicket);
-      if (queryStandards && Array.isArray(queryStandards) && queryStandards.length > 0) {
+      const hasUploadedDoc = Array.isArray(queryDocs) && queryDocs.some(d => (d.role === 'architecture' || d.path?.toLowerCase().endsWith('architecture.md')) && d.uploaded === true);
+      setHasUploadedArchitecture(hasUploadedDoc);
+
+      if (queryDocs && Array.isArray(queryDocs) && queryDocs.length > 0) {
+        setRepoDocs(queryDocs);
+      } else if (!isGh && queryId === 'PR-101') {
+        setRepoDocs(initialReferences);
+      } else {
+        setRepoDocs([]);
+      }
+
+      if (hasUploadedDoc && queryStandards && Array.isArray(queryStandards) && queryStandards.length > 0) {
         setStandards(queryStandards);
       } else if (!isGh && queryId === 'PR-101') {
         setStandards(initialStandards);
@@ -251,18 +263,6 @@ function AppContent() {
         setArchitectureText(defaultArchitecture);
       } else {
         setArchitectureText('');
-      }
-
-      if (queryDocs && Array.isArray(queryDocs) && queryDocs.length > 0) {
-        setRepoDocs(queryDocs);
-        const hasUploadedDoc = queryDocs.some(d => (d.role === 'architecture' || d.path?.toLowerCase().endsWith('architecture.md')) && d.uploaded === true);
-        setHasUploadedArchitecture(hasUploadedDoc);
-      } else if (!isGh && queryId === 'PR-101') {
-        setRepoDocs(initialReferences);
-        setHasUploadedArchitecture(false);
-      } else {
-        setRepoDocs([]);
-        setHasUploadedArchitecture(false);
       }
 
       if (queryMeta) setGithubMeta(queryMeta);
@@ -340,9 +340,9 @@ function AppContent() {
           }));
         }
 
-        if (Array.isArray(userProgress.standards) && userProgress.standards.length > 0) {
+        if (hasUploadedDoc && Array.isArray(userProgress.standards) && userProgress.standards.length > 0) {
           setStandards(userProgress.standards);
-        } else if (queryStandards && queryStandards.length > 0) {
+        } else if (hasUploadedDoc && queryStandards && queryStandards.length > 0) {
           setStandards(queryStandards.map(s => ({ ...s, completed: false })));
         } else if (!isGh && queryId === 'PR-101') {
           setStandards(initialStandards.map(s => ({ ...s, completed: false })));
@@ -366,7 +366,7 @@ function AppContent() {
             criteria: initialJiraTicket.criteria.map(ac => ({ ...ac, completed: false }))
           }));
         }
-        if (queryStandards && queryStandards.length > 0) {
+        if (hasUploadedDoc && queryStandards && queryStandards.length > 0) {
           setStandards(queryStandards.map(s => ({ ...s, completed: false })));
         } else if (!isGh && queryId === 'PR-101') {
           setStandards(initialStandards.map(s => ({ ...s, completed: false })));
@@ -503,8 +503,8 @@ function AppContent() {
   const totalAcCount = (jiraTicket.criteria || []).length;
   const isLevel1Complete = totalAcCount > 0 && completedAcCount === totalAcCount;
 
-  const completedStandardsCount = (standards || []).filter(s => s.completed).length;
-  const totalStandardsCount = (standards || []).length;
+  const completedStandardsCount = hasArchitectureDoc ? (standards || []).filter(s => s.completed).length : 0;
+  const totalStandardsCount = hasArchitectureDoc ? (standards || []).length : 0;
   const isLevel2Complete = hasArchitectureDoc && totalStandardsCount > 0 && completedStandardsCount === totalStandardsCount;
 
   const isGithubWorkspace = isGithubWorkspaceFiles(files) || isGh;
@@ -546,35 +546,58 @@ function AppContent() {
   };
 
   const handleSelectGitHubPr = async (pr) => {
-    if (!pr?.owner || !pr?.repo || !pr?.number) return;
-    if (pr.queryId === currentQueryId && !githubPrLoading) return;
+    if (!pr) return;
+    const fallbackOwner = (githubRepoUrl || '').replace(/^https?:\/\/github\.com\//, '').split('/')[0] || 'allenjamesvinoy';
+    const fallbackRepo = (githubRepoUrl || '').replace(/^https?:\/\/github\.com\//, '').split('/')[1] || 'hobby-agent';
+    const owner = pr.owner || fallbackOwner;
+    const repo = pr.repo || fallbackRepo;
+    const prNumber = pr.number || Number(String(pr.queryId || '').split('#')[1]);
+    if (!owner || !repo || !prNumber) return;
+
+    const targetQueryId = pr.queryId || `GH-${owner}/${repo}#${prNumber}`;
+    if (targetQueryId === currentQueryId && !githubPrLoading) return;
 
     setGithubPrLoading(true);
     setGithubError('');
     setSyncStatus('syncing');
 
-    const res = await api.fetchGitHubPullRequest(pr.owner, pr.repo, pr.number, {
-      head: pr.head,
-      base: pr.base,
-      title: pr.title
-    });
-    setGithubPrLoading(false);
+    try {
+      const res = await api.fetchGitHubPullRequest(owner, repo, prNumber, {
+        head: pr.head,
+        base: pr.base,
+        title: pr.title
+      });
+      setGithubPrLoading(false);
 
-    if (!res.success) {
-      setGithubError(res.error || `Failed to load PR #${pr.number}`);
+      if (!res.success) {
+        const errMsg = res.error || `Failed to load PR #${prNumber}`;
+        setGithubError(errMsg);
+        setSyncStatus('offline');
+        setQuestLogs(prev => [
+          {
+            id: Date.now(),
+            text: `⚠️ Failed to load PR #${prNumber}: ${errMsg}`,
+            timestamp: new Date().toLocaleTimeString()
+          },
+          ...prev
+        ].slice(0, 5));
+        return;
+      }
+
+      await applyGithubWorkspace(res);
+      setQuestLogs(prev => [
+        {
+          id: Date.now(),
+          text: `🔀 Switched to GitHub PR #${prNumber}: ${pr.title || res.title}`,
+          timestamp: new Date().toLocaleTimeString()
+        },
+        ...prev
+      ].slice(0, 5));
+    } catch (err) {
+      setGithubPrLoading(false);
+      setGithubError(err.message || `Failed to load PR #${prNumber}`);
       setSyncStatus('offline');
-      return;
     }
-
-    await applyGithubWorkspace(res);
-    setQuestLogs(prev => [
-      {
-        id: Date.now(),
-        text: `🔀 Switched to GitHub PR #${pr.number}: ${pr.title}`,
-        timestamp: new Date().toLocaleTimeString()
-      },
-      ...prev
-    ].slice(0, 5));
   };
 
   const applyGithubWorkspace = async (workspace) => {
@@ -590,17 +613,15 @@ function AppContent() {
       await loadQueryState(queryId, currentUser);
     } else {
       const chunkedFiles = chunkLargeFiles(workspace.files || [], 200);
-      const nextStandards = Array.isArray(workspace.standards) && workspace.standards.length > 0
-        ? workspace.standards.map(s => ({ ...s, completed: false }))
+      const nextStandards = [];
+      const nextArchitectureText = '';
+      const nextRepoDocs = Array.isArray(workspace.repoDocs)
+        ? workspace.repoDocs.filter(d => d.role !== 'architecture' || d.uploaded === true)
         : [];
-      const nextArchitectureText = typeof workspace.architectureText === 'string' && workspace.architectureText.trim()
-        ? workspace.architectureText
-        : '';
-      const nextRepoDocs = Array.isArray(workspace.repoDocs) ? workspace.repoDocs : [];
       const nextTestSuites = Array.isArray(workspace.testSuites) && workspace.testSuites.length > 0
         ? workspace.testSuites
         : (workspace.meta?.testSuites && Array.isArray(workspace.meta.testSuites) ? workspace.meta.testSuites : []);
-      const nextDiagramModel = workspace.architectureDiagramModel || null;
+      const nextDiagramModel = null;
       const nextSymbolCatalog = workspace.symbolCatalog || null;
 
       const newState = {
@@ -663,14 +684,16 @@ function AppContent() {
 
   const handlePrevGithubPr = async () => {
     if (!githubPullRequests.length) return;
-    const idx = githubPullRequests.findIndex(pr => pr.queryId === currentQueryId);
+    const currNum = Number(String(currentQueryId).split('#')[1]) || null;
+    const idx = githubPullRequests.findIndex(pr => pr.queryId === currentQueryId || (currNum && pr.number === currNum));
     const prevIdx = idx <= 0 ? githubPullRequests.length - 1 : idx - 1;
     await handleSelectGitHubPr(githubPullRequests[prevIdx]);
   };
 
   const handleNextGithubPr = async () => {
     if (!githubPullRequests.length) return;
-    const idx = githubPullRequests.findIndex(pr => pr.queryId === currentQueryId);
+    const currNum = Number(String(currentQueryId).split('#')[1]) || null;
+    const idx = githubPullRequests.findIndex(pr => pr.queryId === currentQueryId || (currNum && pr.number === currNum));
     const nextIdx = idx < 0 || idx >= githubPullRequests.length - 1 ? 0 : idx + 1;
     await handleSelectGitHubPr(githubPullRequests[nextIdx]);
   };

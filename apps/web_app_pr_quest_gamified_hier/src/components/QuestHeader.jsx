@@ -50,7 +50,7 @@ export default function QuestHeader({
       num: 2, 
       name: "2. Core Architecture", 
       desc: "Tier 1 logic & standards",
-      statsText: `${completedStandardsCount}/${totalStandardsCount} Audited`,
+      statsText: hasArchitectureDoc ? `${completedStandardsCount}/${totalStandardsCount} Audited` : 'Locked',
       isDone: isLevel2Complete
     },
     { 

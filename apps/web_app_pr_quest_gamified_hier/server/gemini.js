@@ -300,9 +300,10 @@ function normalizeGeminiTestSuites(rawSuites = [], files = []) {
     // Nested suite case { title, tests: [ ... ] }
     if (Array.isArray(item.tests) && item.tests.length > 0) {
       const suiteName = item.suiteName || item.title || `Suite ${suiteIdx + 1}`;
-      const suiteFile = item.file || (files[0] ? `tests/${files[0].path.split('/').pop().replace(/\.[^.]+$/, '')}.test.js` : 'tests/suite.test.js');
+      const f0Path = files[0]?.path || files[0]?.filename || 'file.js';
+      const suiteFile = item.file || (files[0] ? `tests/${f0Path.split('/').pop().replace(/\.[^.]+$/, '')}.test.js` : 'tests/suite.test.js');
       item.tests.forEach((t, tIdx) => {
-        const targetFile = t.targetFile || files[0]?.path || 'src/index.js';
+        const targetFile = t.targetFile || files[0]?.path || files[0]?.filename || 'src/index.js';
         const targetSymbol = t.targetSymbol || t.symbol || 'handler';
         result.push({
           id: t.id || `test-${suiteIdx + 1}-${tIdx + 1}`,

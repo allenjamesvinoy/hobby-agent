@@ -426,7 +426,8 @@ export async function fetchRepoDocsAtHead(owner, repo, headSha, changedFiles = [
     (changedFiles || []).map((f) => String(f.filename || f.path || '').toLowerCase()).filter(Boolean)
   );
 
-  const roles = ['architecture', 'context', 'product'];
+  // Only context and product docs are discovered automatically; architecture requires explicit user upload
+  const roles = ['context', 'product'];
   const results = await Promise.all(
     roles.map((role) => fetchDocForRole(owner, repo, role, DOC_CANDIDATES[role], headSha, changedPathSet, accessToken))
   );
@@ -838,19 +839,8 @@ export async function fetchPullRequestFromLocalGit(owner, repo, number, options 
 
   const prTitle = options.title || commitTitle.replace(/^feat:\s*autonomous implementation for\s*['"]?|['"]?$/gi, '').trim() || `PR #${number}`;
 
-  // Repo Docs
+  // Repo Docs: only issue specs and readmes; architecture must be uploaded in UI
   const repoDocs = [];
-  const archCandidates = ['docs/architecture.md', 'ARCHITECTURE.md', 'docs/ARCHITECTURE.md'];
-  for (const rel of archCandidates) {
-    const full = path.join(repoDir, rel);
-    if (fs.existsSync(full)) {
-      const content = fs.readFileSync(full, 'utf8').trim();
-      if (content) {
-        repoDocs.push({ role: 'architecture', path: rel, content, changedInPr: false });
-        break;
-      }
-    }
-  }
 
   const specCandidates = ['docs/simulated_issue_spec.md', 'docs/CONTEXT.md', 'CONTEXT.md', 'docs/PRODUCT.md', 'PRODUCT.md'];
   for (const rel of specCandidates) {
@@ -901,10 +891,11 @@ export async function fetchPullRequestFromLocalGit(owner, repo, number, options 
     diffChunks: parsePatchToChunks(f.patch)
   }));
 
-  const standards = hasArchitectureDoc ? buildStandardsFromDocs(repoDocs) : [];
-  const architectureText = hasArchitectureDoc ? buildArchitectureText(repoDocs) : '';
+  // Architecture standards and diagram are empty for GitHub PRs until user uploads architecture.md
+  const standards = [];
+  const architectureText = '';
   let testSuites = synthesizeTestSuites(rawFiles, prTitle);
-  const architectureDiagramModel = hasArchitectureDoc ? synthesizeArchitectureDiagram(mappedFiles, prTitle) : null;
+  const architectureDiagramModel = null;
 
   const chunkedFiles = chunkLargeFiles(mappedFiles, 200);
   const derivedCatalog = buildSymbolCatalogFromFiles(chunkedFiles);
@@ -1034,23 +1025,31 @@ export async function fetchPullRequestWorkspace(owner, repo, number, accessToken
     linkedIssue = await fetchGithubIssue(owner, repo, issueMatch[1], accessToken);
   }
 
+  // Normalize files so both path and filename are always defined
+  const normalizedFiles = (files || []).map(f => ({
+    ...f,
+    path: f.path || f.filename || '',
+    filename: f.filename || f.path || ''
+  }));
+
   // 2. Synthesize criteria & file tags
   const synthCriteria = synthesizeCriteria({
     prTitle: pr.title,
     prBody: bodyPreview,
     issueBody: linkedIssue?.body || '',
-    files
+    files: normalizedFiles
   });
 
   const criteria = synthCriteria.criteria;
   const fileSpecTags = synthCriteria.fileSpecTags || {};
 
-  const mappedFiles = files.map((f, idx) => ({
+  const mappedFiles = normalizedFiles.map((f, idx) => ({
     id: `gh-${number}-file-${idx + 1}`,
-    path: f.filename,
-    tier: inferTier(f.filename, f.additions, f.deletions),
-    importance: inferImportance(f.filename, f.additions, f.deletions),
-    specTag: fileSpecTags[f.filename] || 'ALL',
+    path: f.path,
+    filename: f.filename,
+    tier: inferTier(f.path, f.additions, f.deletions),
+    importance: inferImportance(f.path, f.additions, f.deletions),
+    specTag: fileSpecTags[f.path] || fileSpecTags[f.filename] || 'ALL',
     status: 'pending',
     comments: [],
     status_github: f.status,
@@ -1059,15 +1058,13 @@ export async function fetchPullRequestWorkspace(owner, repo, number, accessToken
     diffChunks: parsePatchToChunks(f.patch)
   }));
 
-  // 3. Architecture standards & text
-  const hasArchitectureDoc = repoDocs.some(d => d.role === 'architecture' && d.content && d.content.trim());
-  const docStandards = hasArchitectureDoc ? buildStandardsFromDocs(repoDocs) : [];
-  const standards = (docStandards && docStandards.length > 0) ? docStandards : [];
-  const architectureText = hasArchitectureDoc ? buildArchitectureText(repoDocs) : '';
+  // 3. Architecture standards & text: for GitHub PRs, require explicit architecture.md upload
+  const standards = [];
+  const architectureText = '';
+  const architectureDiagramModel = null;
 
-  // 4. Test suites & diagram model
-  let testSuites = synthesizeTestSuites(files, pr.title);
-  const architectureDiagramModel = hasArchitectureDoc ? synthesizeArchitectureDiagram(mappedFiles, pr.title) : null;
+  // 4. Test suites
+  let testSuites = synthesizeTestSuites(normalizedFiles, pr.title);
 
   // 5. Break down files exceeding 200 lines into logical chunks
   const chunkedFiles = chunkLargeFiles(mappedFiles, 200);

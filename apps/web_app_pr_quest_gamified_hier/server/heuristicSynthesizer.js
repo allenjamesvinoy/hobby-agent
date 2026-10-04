@@ -9,6 +9,7 @@ function sanitizeId(str) {
 }
 
 function extractBaseName(filePath) {
+  if (!filePath || typeof filePath !== 'string') return '';
   const parts = filePath.split(/[/\\]/);
   return parts[parts.length - 1] || filePath;
 }
@@ -87,11 +88,12 @@ export function synthesizeCriteria({ prTitle = '', prBody = '', issueBody = '', 
 
   if (topFiles.length > 0) {
     topFiles.forEach((f, idx) => {
-      const baseName = extractBaseName(f.path);
+      const filePath = f.path || f.filename || `file_${idx + 1}.js`;
+      const baseName = extractBaseName(filePath);
       defaultCriteria.push({
         id: `AC-${idx + 2}`,
         title: `Validate changes in ${baseName}`,
-        description: `Review logic, modifications, and error handling in ${f.path}.`,
+        description: `Review logic, modifications, and error handling in ${filePath}.`,
         completed: false
       });
     });
@@ -204,11 +206,12 @@ export function synthesizeStandards(files = []) {
  * Synthesize dynamic architecture SVG diagram nodes & edges.
  */
 export function synthesizeArchitectureDiagram(files = [], prTitle = '') {
-  const nonTestFiles = files.filter(f => !/test|spec|mock|__test__/i.test(f.path));
+  const nonTestFiles = files.filter(f => !/test|spec|mock|__test__/i.test(f.path || f.filename || ''));
   const primaryFiles = (nonTestFiles.length > 0 ? nonTestFiles : files).slice(0, 4);
 
   const nodes = primaryFiles.map((f, idx) => {
-    const baseName = extractBaseName(f.path);
+    const filePath = f.path || f.filename || `module_${idx + 1}.js`;
+    const baseName = extractBaseName(filePath);
     const shortId = sanitizeId(baseName.replace(/\.[^.]+$/, '')).slice(0, 10).toUpperCase();
     const isNew = f.status === 'added' || f.status_github === 'added';
     const isModified = !isNew && (f.status_github !== 'removed');

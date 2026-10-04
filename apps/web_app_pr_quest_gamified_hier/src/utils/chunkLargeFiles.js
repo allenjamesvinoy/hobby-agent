@@ -5,9 +5,10 @@
 
 export const MAX_LOC_PER_BLOCK = 200;
 
-export function formatPartPath(originalPath, partNum) {
-  const parts = originalPath.split('/');
-  const fileName = parts.pop() || originalPath;
+export function formatPartPath(originalPath = '', partNum = 1) {
+  const safePath = (typeof originalPath === 'string' && originalPath.trim()) ? originalPath : 'file.js';
+  const parts = safePath.split('/');
+  const fileName = parts.pop() || safePath;
   const dir = parts.length > 0 ? parts.join('/') + '/' : '';
 
   const lastDot = fileName.lastIndexOf('.');
@@ -117,8 +118,9 @@ export function chunkLargeFiles(files = [], maxLines = MAX_LOC_PER_BLOCK) {
 
     partGroups.forEach((groupChunks, idx) => {
       const partNum = idx + 1;
-      const partPath = formatPartPath(file.path, partNum);
-      const partId = `${file.id}_part_${partNum}`;
+      const filePath = file.path || file.filename || 'file.js';
+      const partPath = formatPartPath(filePath, partNum);
+      const partId = `${file.id || 'file'}_part_${partNum}`;
       const partLines = countDiffLines(groupChunks);
 
       let additions = 0;
