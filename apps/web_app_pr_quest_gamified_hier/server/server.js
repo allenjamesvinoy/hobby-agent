@@ -173,6 +173,12 @@ app.post('/api/verdict', (req, res) => {
   res.json({ success: true, verdicts });
 });
 
+// Reset database to initial clean state
+app.post('/api/reset', (req, res) => {
+  db.resetDatabase();
+  res.json({ success: true, message: 'Database reset and re-seeded to initial clean state.' });
+});
+
 // Serve frontend static build if exists
 if (fs.existsSync(DIST_DIR)) {
   app.use(express.static(DIST_DIR));

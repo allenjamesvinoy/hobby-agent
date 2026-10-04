@@ -53,6 +53,33 @@ class DatabaseManager {
     }
   }
 
+  resetDatabase() {
+    if (this.sqlite) {
+      try {
+        this.sqlite.exec(`
+          DROP TABLE IF EXISTS user_progress;
+          DROP TABLE IF EXISTS review_queries;
+          DROP TABLE IF EXISTS users;
+        `);
+        this.initTables();
+        this.seedInitialData();
+        console.log('[DB] Database reset and re-seeded successfully.');
+        return true;
+      } catch (err) {
+        console.error('[DB] Failed to reset SQLite database:', err);
+      }
+    }
+    if (this.useMemoryFallback) {
+      this.fallbackStore = { users: {}, review_queries: {}, user_progress: {} };
+      if (this.fallbackFile && fs.existsSync(this.fallbackFile)) {
+        try { fs.unlinkSync(this.fallbackFile); } catch (_) {}
+      }
+      this.initJsonFallback();
+      return true;
+    }
+    return false;
+  }
+
   initTables() {
     this.sqlite.exec(`
       CREATE TABLE IF NOT EXISTS users (
