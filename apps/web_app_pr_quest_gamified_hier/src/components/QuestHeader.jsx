@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, RefreshCw, GitPullRequest } from 'lucide-react';
+import { Shield, RefreshCw, GitPullRequest, Award, CheckCircle } from 'lucide-react';
 
 export default function QuestHeader({ 
   level, 
