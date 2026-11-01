@@ -21,7 +21,9 @@ import {
   BookOpen,
   ArrowLeft,
   Bookmark,
-  Search
+  Search,
+  Move,
+  RotateCcw
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import Tesseract from 'tesseract.js';
@@ -101,12 +103,15 @@ export default function PdfViewerModal({
   });
   const [copySuccess, setCopySuccess] = useState(false);
 
-  // Flashcard Creation States
+  // Flashcard Creation States & Draggable Position
   const [isCardModalOpen, setIsCardModalOpen] = useState(false);
   const [cardFront, setCardFront] = useState('');
   const [cardBack, setCardBack] = useState('');
   const [cardSourcePage, setCardSourcePage] = useState(initialPage || 1);
   const [cardSavedFeedback, setCardSavedFeedback] = useState(false);
+  const [cardModalPos, setCardModalPos] = useState({ x: 0, y: 0 });
+  const isDraggingCardModal = useRef(false);
+  const dragStartRef = useRef({ mouseX: 0, mouseY: 0, posX: 0, posY: 0 });
   
   const scrollContainerRef = useRef(null);
   const selectionToolbarRef = useRef(null);
@@ -141,6 +146,36 @@ export default function PdfViewerModal({
   const referencesSection = sections.find((s) =>
     /references|bibliography/i.test(s.name)
   );
+
+  const handleHeaderMouseDown = (e) => {
+    if (e.target.closest('button') || e.target.closest('input')) return;
+    isDraggingCardModal.current = true;
+    dragStartRef.current = {
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      posX: cardModalPos.x,
+      posY: cardModalPos.y
+    };
+
+    const handleMouseMove = (moveEvent) => {
+      if (!isDraggingCardModal.current) return;
+      const dx = moveEvent.clientX - dragStartRef.current.mouseX;
+      const dy = moveEvent.clientY - dragStartRef.current.mouseY;
+      setCardModalPos({
+        x: dragStartRef.current.posX + dx,
+        y: dragStartRef.current.posY + dy
+      });
+    };
+
+    const handleMouseUp = () => {
+      isDraggingCardModal.current = false;
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
 
   useEffect(() => {
     scaleRef.current = scale;
@@ -346,6 +381,7 @@ export default function PdfViewerModal({
   };
 
   const handleCreateCardFromSelection = () => {
+    setCardModalPos({ x: 0, y: 0 });
     const text = selectionToolbar.text;
     if (!text) return;
     if (text.length <= 100) {
@@ -361,6 +397,7 @@ export default function PdfViewerModal({
   };
 
   const handleOpenCardModal = () => {
+    setCardModalPos({ x: 0, y: 0 });
     const selectedText = window.getSelection()?.toString()?.trim() || '';
     if (selectedText) {
       if (selectedText.length <= 100 && !cardFront) {
@@ -1003,7 +1040,7 @@ export default function PdfViewerModal({
       </div>
 
       {/* Main Viewport Workspace */}
-      <div className="flex-1 flex overflow-hidden gap-4 min-h-0">
+      <div className="flex-1 flex overflow-hidden gap-4 min-h-0 relative">
         {/* Collapsible Sections & Flashcards Sidebar */}
         {showSectionsSidebar && (
           <div className="w-72 bg-[#f7f6f3] border border-stone-200/90 rounded-xl p-3 flex flex-col shrink-0 overflow-hidden shadow-md h-full min-h-0">
@@ -1347,11 +1384,14 @@ export default function PdfViewerModal({
         </div>
       )}
 
-      {/* Quick-Create Flashcard Modal */}
+      {/* Quick-Create Flashcard Modal (Non-blocking Corner Overlay with Dragging & Snap Back) */}
       {isCardModalOpen && (
-        <div className="fixed inset-0 z-[60] bg-black/30 backdrop-blur-xs flex items-center justify-center p-4 select-text">
+        <div className="fixed inset-0 z-[60] pointer-events-none flex items-end justify-end p-6 select-text">
           <div
-            className="w-full max-w-lg bg-white border border-stone-200 rounded-2xl p-5 shadow-xl space-y-4 animate-in fade-in zoom-in-95 duration-150"
+            style={{
+              transform: `translate(${cardModalPos.x}px, ${cardModalPos.y}px)`
+            }}
+            className="pointer-events-auto w-full max-w-md sm:max-w-lg bg-white/95 backdrop-blur-md border border-stone-300 rounded-2xl p-5 shadow-2xl space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-150 relative hover:bg-white transition-all border-t-2 border-t-stone-800"
             onKeyDown={(e) => {
               if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
                 e.preventDefault();
@@ -1359,10 +1399,16 @@ export default function PdfViewerModal({
               }
             }}
           >
-            <div className="flex items-start justify-between border-b border-stone-100 pb-3">
+            <div
+              onMouseDown={handleHeaderMouseDown}
+              className="flex items-start justify-between border-b border-stone-100 pb-3 cursor-move select-none"
+            >
               <div>
                 <h4 className="text-sm font-bold text-stone-800 flex items-center gap-2">
                   <Brain className="w-4 h-4 text-stone-700" /> Create Flashcard
+                  <span className="text-[10px] font-mono text-stone-400 font-normal flex items-center gap-1 bg-stone-100 px-1.5 py-0.5 rounded border border-stone-200">
+                    <Move className="w-3 h-3 text-stone-500" /> Drag to move
+                  </span>
                 </h4>
                 <div className="flex items-center gap-2 mt-1 text-[11px] text-stone-500 font-mono">
                   <span className="truncate max-w-[180px] text-stone-700">{title}</span>
@@ -1377,13 +1423,24 @@ export default function PdfViewerModal({
                   )}
                 </div>
               </div>
-              <button
-                onClick={() => setIsCardModalOpen(false)}
-                className="p-1 hover:bg-stone-100 rounded text-stone-400 hover:text-stone-700 transition-colors"
-                title="Close"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-1">
+                {(cardModalPos.x !== 0 || cardModalPos.y !== 0) && (
+                  <button
+                    onClick={() => setCardModalPos({ x: 0, y: 0 })}
+                    className="p-1 hover:bg-stone-100 rounded text-stone-400 hover:text-stone-700 transition-colors"
+                    title="Reset position to bottom right corner"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <button
+                  onClick={() => setIsCardModalOpen(false)}
+                  className="p-1 hover:bg-stone-100 rounded text-stone-400 hover:text-stone-700 transition-colors"
+                  title="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             <div className="space-y-3">
